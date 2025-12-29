@@ -1,0 +1,141 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025 ggeoffre, LLC
+
+```            ⣠⣄
+               ⣿⣿
+     ⣤⣄       ⠐⠛⠛⠂      ⣠⣤           ███████                            █████████   █████                ███
+     ⠙⢿⣷⡶ ⣀⣴⣶⣾⣟⣻⣷⣶⣦⣀ ⢶⣾⡿⠋         ███░░░░░███                         ███░░░░░███ ░░███                ░░░
+      ⠘⠋⣠⢞⣿⠿⠛⠉⣉⣉⠉⠛⠿⣿⡳⣄⠙⠃         ███     ░░███ ████████    ██████    ░███    ░░░  ███████   ████████  ████  ████████    ███████
+      ⢀⣼⣿⡟⠁⣤⡀ ⢹⡏ ⢀⣤⠈⢻⣿⣧⡀        ░███      ░███░░███░░███  ███░░███   ░░█████████ ░░░███░   ░░███░░███░░███ ░░███░░███  ███░░███
+    ⢀ ⣸⣿⡟  ⠈⠻⠂⢈⡁⠐⠟⠁  ⢻⣿⣇ ⡀      ░███      ░███ ░███ ░███ ░███████     ░░░░░░░░███  ░███     ░███ ░░░  ░███  ░███ ░███ ░███ ░███
+ ⢾⣿⣿⣿ ⣿⣹⡇⢸⡷⠶⠆⠰⣿⣿⠆⠰⠶⢾⡇⢸⣏⣿ ⣿⣿⣿⡷  ░░███     ███  ░███ ░███ ░███░░░      ███    ░███  ░███ ███ ░███      ░███  ░███ ░███ ░███ ░███
+    ⠈ ⢹⣿⣧  ⢀⣴⠄⢈⡁⠠⣦⡀  ⣼⣿⡏ ⠁       ░░░███████░   ████ █████░░██████    ░░█████████   ░░█████  █████     █████ ████ █████░░███████
+      ⠈⢻⣿⣧⡀⠛⠁ ⣸⣇ ⠈⠛⢀⣼⣿⡟⠁           ░░░░░░░    ░░░░ ░░░░░  ░░░░░░      ░░░░░░░░░     ░░░░░  ░░░░░     ░░░░░ ░░░░ ░░░░░  ░░░░░███
+      ⢠⣄⠙⢮⣿⣶⣤⣀⣉⣉⣀⣤⣶⣿⡵⠋⣠⡄                                                                                               ███ ░███
+     ⣠⣾⡿⠷ ⠉⠻⠿⢿⣯⣽⡿⠿⠟⠉ ⠾⢿⣷⣄                                                                                              ░░██████
+     ⠛⠋      ⠠⣤⣤⠄        ⠙⠛                                                                                               ░░░░░░
+               ⣿⣿
+               ⠙⠋
+
+﹏𓊝﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏
+One String, Many Prompts: A Hands-On Workshop in AI Code Generation
+
+{
+    "recorded" : 1756655999,
+    "location" : "den",
+    "sensor" : "bmp280",
+    "measurement" : "temperature",
+    "units" : "C",
+    "value" : 22.3
+}
+```
+
+The concept is simple, using this one simple five parameter JSON string, you can use AI/LLM to generate code for any programming language, framework, or library. This workshop will guide you through the process of using AI code generation to create a simple web application as well as the IoT microcontroller necessary to collect and transmit from a wide variety of different sensors.
+
+
+REQUIRED SOFTWARE
+☸ ────────────────────────
+1. Docker Desktop (latest)
+2. Microsoft VS CODE (latest)
+
+
+INSTALLATION
+☸ ────────────────────────
+1. Install Docker Desktop from
+   https://www.docker.com/products/docker-desktop
+2. Install Microsoft VS CODE from
+   https://code.visualstudio.com/download
+3. Configure VS Code to use the GitHub Copilot extension
+   https://code.visualstudio.com/docs/copilot/overview
+
+
+REQUIRED ACCOUNTS
+☸ ────────────────────────
+1. Docker Hub account
+   https://docs.docker.com/accounts/create-account/
+2. GitHub account
+   https://docs.github.com/en/get-started/start-your-journey/creating-an-account-on-github
+3. CoPilot account
+   https://code.visualstudio.com/docs/copilot/setup
+
+
+PRE-CHECK
+☸ ────────────────────────
+1. Docker Check: from the command line...
+   https://www.docker.com/blog/how-to-check-docker-version/
+
+   docker pull python:3.13.0
+   docker pull mongo:8.2.2
+
+
+2. Verify Your GitHub Copilot Account
+   https://docs.github.com/en/copilot/how-tos/manage-your-account
+
+
+3. VS Code Check: from within the IDE...
+   https://docs.github.com/en/copilot/how-tos/configure-personal-settings/configure-in-ide?tool=vscode
+
+   Verify Subscription: 
+     Ensure your GitHub account has an active Copilot subscription. 
+     You can check this in your GitHub account settings.
+
+   Check Extensions:
+     Open the Extensions view (Ctrl+Shift+X).
+     Search for "GitHub Copilot" and "GitHub Copilot Chat"
+     Make sure they are installed and enabled.
+     Ensure both extensions are up to date.
+
+
+EXPECTAIONS
+𓆞 ────────────────────────
+In this two-hour assignment, you will be required to complete the following tasks:
+1. Download, install, and launch a generic MongoDB v8.2.2 container from Docker Hub.
+2. Download, install, launch and attach to a generic Python v3.13.0 container from Docker Hub.
+3. Use the GitHub Copilot extension to complete the assignment by typing prompts and generating code.
+
+
+HOMEWORK (after the two-hour session)
+𓆞 ────────────────────────
+- Basic: Complete the IoT side of the assignment using CircuitPython
+- Advanced: Use a different combination of languages and databases
+- Masters: Complete all 5^5 different combinations of solutions
+
+
+NOTES
+𓆞 ────────────────────────
+- All steps, exercises, tools, and techniques have been fully vetted on both macOS and Linux Mint (and Raspbian for the IoT tasks).
+- You should not need to have a paid account for GitHub Copilot (unless you have already maxed out your monthly quota).
+- Ensure that your VS Code is properly configured with the GitHub Copilot extension before starting the assignment
+- The focus will be on the prompts and the generated code, hence the 'clean' docker container runtimes.
+- Fully rendered solutions in every language for every database will be available.
+- All prompts used to generate all code will also be available.
+- Solutions for the IoT side of the assignment will be provided
+
+
+OPTIONS (if you choose to... you may use...)
+☠ ────────────────────────
+- GO, Java, Python, Rust or Swift Docker container for your runtime environment (solutions provided).
+- Cassandra, Mongo, MySQL, PostgreSQL or Redis Docker container for your database (solutions provided).
+- A different Code Editor or IDE like Zed, JetBrains, or NeoVim.
+- Any other AI/LLM like Google Gemini, Anthropic Claude, Meta LLama, or OpenAI ChatGPT
+- Running Ollama may be an option for those who prefer to run AI/LLM locally (download your model from https://ollama.ai/).
+
+
+DOCKER CONTAINER VERSIONS (very important)
+☠ ────────────────────────
+- rust:1.91.1
+- golang:1.25.4
+- gradle:9.2.1-jdk21
+- python:3.13.0
+- swift:6.2.1
+- redis:8.4.0
+- postgres:18.1
+- mysql:9.5.0
+- mongo:8.2.2
+- cassandra:5.0.6
+
+
+BONUS
+☠ ────────────────────────
+- A 'lite' mobile version of the assignment will be provided that only requires an iPad
+- The full end to end solution will be fully operational (provided you have an IoT dev board)
