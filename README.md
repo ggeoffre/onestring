@@ -1,2 +1,7 @@
-# onestring
-OneString project for CodeMash ByteSized Hands-On Session
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025 ggeoffre, LLC
+
+One String, Many Prompts: A Hands-On Workshop in AI Code Generation
++++
+
+What if one tiny JSON record could unlock an entire pipeline of working code? In this fast-paced, hands-on 2-hour workshop, we’ll use a single JSON string to generate cross-platform solutions with AI — spanning microcontrollers, APIs, and databases. Attendees won’t just see AI-generated code; they’ll actively craft prompts, refine them, and evaluate the results in real time. Along the way, we’ll reveal a powerful feedback loop: every prompt is captured, then fed back into AI for critique, showing how better organization and phrasing yield stronger outcomes. Whether you care about IoT tinkering, backend APIs, or data pipelines, you’ll leave with practical techniques for writing and refining prompts that turn AI into a productive coding partner. Whether you’re into IoT tinkering, backend APIs, or data engineering, this fast-paced session will show you how AI can accelerate development across the stack — starting from one simple string. { "recorded" : 1756655999, "location" : "den", "sensor" : "bmp280", "measurement" : "temperature", "units" : "C", "value" : 22.3 }
