@@ -1,26 +1,16 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2025 ggeoffre, LLC
 
-import json
 import os
 
 import pymongo
+import sensor_data_helper
 
 # Configurations
 MONGO_HOST = os.environ.get("DATA_HOSTNAME", "192.168.1.60").lower()
 MONGO_PORT = 27017
 MONGO_DB = "sensor_data_db"
 MONGO_COLLECTION = "sensor_data"
-
-# OneString
-SENSOR_DATA_DICT = {
-    "recorded": 1768570200,
-    "location": "den",
-    "sensor": "bmp280",
-    "measurement": "temperature",
-    "units": "C",
-    "value": 22.3,
-}
 
 
 def main():
@@ -39,7 +29,7 @@ def main():
 
     # 2. Store
     try:
-        new_sensor_data = SENSOR_DATA_DICT
+        new_sensor_data = sensor_data_helper.generate_random_sensor_data()
         collection.insert_one(new_sensor_data)
         print("Record stored successfully")
     except Exception as e:
