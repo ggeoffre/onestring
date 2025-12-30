@@ -51,7 +51,7 @@ def raw_mysql_data():
         )
         insert_sql = f"INSERT INTO {MYSQL_TABLE} VALUES (%s, %s, %s, %s, %s, %s)"
         cursor.execute(insert_sql, data_tuple)
-        print("Data stored in MySQL")
+        print("Data stored successfully")
 
         # 3. Retrieve
         with connection.cursor(pymysql.cursors.DictCursor) as dict_cursor:

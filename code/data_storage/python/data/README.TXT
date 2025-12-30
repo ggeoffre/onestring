@@ -22,6 +22,8 @@ To execute this code, run the following commands:
     4. Update Pip and Install the Requirements (from within the Python Runtime Docker container you just connected to):
 
         pip install --upgrade pip; pip install -r requirements.txt
+        pip install -r requirements.txt --root-user-action ignore (necessary for postgres)
+        NOTE: this is within a docker container that can be recreated, so you can ignore the root user action.
 
     5. Run the code (from within the Python Runtime Docker container you just connected to):
 
