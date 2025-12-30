@@ -22,7 +22,7 @@ def raw_redis_data():
             socket_timeout=5,  # Prevent hanging if Redis is down
         )
         redis_client.ping()
-        print(f"Connected to Redis at {REDIS_HOST}")
+        print(f"Connected to Redis at {REDIS_HOST}:{REDIS_PORT}")
     except redis.ConnectionError as e:
         print(f"Could not connect to Redis: {e}")
         return

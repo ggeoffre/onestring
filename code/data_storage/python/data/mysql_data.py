@@ -57,6 +57,8 @@ def raw_mysql_data():
         with connection.cursor(pymysql.cursors.DictCursor) as dict_cursor:
             dict_cursor.execute(f"SELECT * FROM {MYSQL_TABLE}")
             results = dict_cursor.fetchall()
+            for row in results:
+                row["value"] = float(row["value"])
             if results:
                 print(f"Retrieved {len(results)} records")
                 print(results)
