@@ -40,3 +40,19 @@ def generate_random_sensor_data():
         random.uniform(min_temperature, max_temperature), temperature_precision
     )
     return data
+
+
+def create_insert_data_tuple(data):
+    """Prepares a tuple for SQL/CQL insertion."""
+    if not isinstance(data, dict):
+        raise TypeError("Input must be a dictionary")
+
+    # Return directly; no unreachable returns after raise
+    return (
+        int(data.get("recorded", 0)),
+        data.get("location"),
+        data.get("sensor"),
+        data.get("measurement"),
+        data.get("units"),
+        float(data.get("value", 0.0)),
+    )

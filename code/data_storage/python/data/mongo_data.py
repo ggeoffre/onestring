@@ -22,7 +22,7 @@ def raw_mongo_data():
         db = client[MONGO_DB]
         collection = db[MONGO_COLLECTION]
         client.admin.command("ping")  # Verify connection
-        print("Connected to Mongo")
+        print(f"Connected to Mongo at {MONGO_HOST}:{MONGO_PORT}")
     except Exception as e:
         print(f"Connection failed: {e}")
         return
@@ -55,3 +55,4 @@ def raw_mongo_data():
         print(f"Deletion error: {e}")
     finally:
         client.close()
+        print("Connection closed")
