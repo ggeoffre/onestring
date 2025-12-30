@@ -21,7 +21,7 @@
 One String, Many Prompts: A Hands-On Workshop in AI Code Generation
 
 {
-    "recorded" : 1756655999,
+    "recorded" : 1768570200,
     "location" : "den",
     "sensor" : "bmp280",
     "measurement" : "temperature",
@@ -64,7 +64,7 @@ PRE-CHECK
 1. Docker Check: from the command line...
    https://www.docker.com/blog/how-to-check-docker-version/
 
-   docker pull python:3.13.0
+   docker pull python:3.13.5
    docker pull mongo:8.2.2
 
 
@@ -75,8 +75,8 @@ PRE-CHECK
 3. VS Code Check: from within the IDE...
    https://docs.github.com/en/copilot/how-tos/configure-personal-settings/configure-in-ide?tool=vscode
 
-   Verify Subscription: 
-     Ensure your GitHub account has an active Copilot subscription. 
+   Verify Subscription:
+     Ensure your GitHub account has an active Copilot subscription.
      You can check this in your GitHub account settings.
 
    Check Extensions:
@@ -126,7 +126,7 @@ DOCKER CONTAINER VERSIONS (very important)
 - rust:1.91.1
 - golang:1.25.4
 - gradle:9.2.1-jdk21
-- python:3.13.0
+- python:3.13.5
 - swift:6.2.1
 - redis:8.4.0
 - postgres:18.1

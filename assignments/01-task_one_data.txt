@@ -1,0 +1,110 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025 ggeoffre, LLC
+
+ ██████████     █████████   ███████████   █████████
+░░███░░░░███   ███░░░░░███ ░█░░░███░░░█  ███░░░░░███
+ ░███   ░░███ ░███    ░███ ░   ░███  ░  ░███    ░███
+ ░███    ░███ ░███████████     ░███     ░███████████
+ ░███    ░███ ░███░░░░░███     ░███     ░███░░░░░███
+ ░███    ███  ░███    ░███     ░███     ░███    ░███
+ ██████████   █████   █████    █████    █████   █████
+░░░░░░░░░░   ░░░░░   ░░░░░    ░░░░░    ░░░░░   ░░░░░
+
+
+This assignment walks you through setting up a simple Python + Mongo environment, writing basic functions to store, retrieve, update, and delete a standard OneString JSON record, running the code, and then converting those functions into refined AI prompts that consistently regenerate the same working code. The goal is to establish a repeatable workflow for handling the OneString payload and to build a reliable library of prompts before expanding to other languages and databases. Python and Mongo are used first because they’re the easiest, most forgiving pair: Python minimizes boilerplate and errors, Mongo stores JSON natively, and together they let you focus on mastering prompt design rather than debugging complex language or database issues.
+
+
+
+{
+    "recorded" : 1768570200,
+    "location" : "den",
+    "sensor" : "bmp280",
+    "measurement" : "temperature",
+    "units" : "C",
+    "value" : 22.3
+}
+
+
+I. Start Your Development Environment (recommend using python and mongo):
+
+  1. Launch Docker Desktop, and use the terminal within Docker Desktop to:
+    A. Run a mongo database docker container
+
+      docker run --name mongo-container -p 27017:27017 -d mongo:8.2.2
+
+    B. Run a python docker container and attach to the mongo database container
+
+      docker run --name python-container -p 8080:8080 -v ~/Workspace/projects/:/usr/src/python -d python:3.13.5 sleep infinity
+
+  2. Launch VS Code, Open Folder, and Create a Terminal to:
+    A. Connect to the python container from teh VS Code Terminal
+
+      docker exec -it -w /usr/src/python python-container /bin/bash
+
+  3. Create the following file structure within VS Code:
+    ./python/data
+    ./python/data/main.py
+    ./python/data/mongo_data.py
+    ./python/data/requirements.txt
+
+
+II. Modify the following prompts to be language and database specific (recommend using python and mongo):
+
+  1. Create a python function to connect to a mongo database
+  2. Create a python function that will store the following string into a mongo database
+  3. Create a python function that will retrieve the following string from a mongo database
+  4. Create a python function that will delete the following string from a mongo database
+  5. Create a main function that will call each of the functions
+  6. Create a requirements.text file to include all requirements in this source file
+  7. Modify all five methods into one source file using this string as the string that is being stored:
+
+  The String:
+  {"recorded": 1768237200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+
+III. Run your python Code
+
+  python --version
+  pip install --upgrade pip
+  pip install -r requirements.txt
+  python app.py
+
+
+IV. Once fully operational, copy each of the four functions individually, and add it to the following AI prompt...
+
+  "Using the following source code, generate an AI prompt that would produce this code:"
+
+    compared to...
+
+  "Using the following source code to generate an AI prompt, using simple english, that would produce this code:"
+
+    NOTE: Cute/paste the code you generated above that sucessfully ran.
+
+
+V. Now take all of the original prompts from II above, and add it to the following AI prompt...
+
+  "How could each of these prompts be written in a manner to produce 'better' code:"
+
+    NOTE: use any instruction to replace 'better' (like cleaner, efficient, optimized, readable, concise, performant, scalable, maintainable, secure, etc.)
+
+
+EXTRA PROMPTS TO TRY:
+
+  A. Create a python function that will update any value in the key value pair of a mutable dictionary
+  B. Create a python function that will generate a random number between 22.4 and 34.1, limited to one decimal place of precision
+  C. Create a python function that will generate the integer value of the current Unix Epoch Timestamp
+  D. Create a python function that will update both the "recorded" value with the current Unix Epoch Timestamp, and the "value" with a random number between 22.4 and 34.1, using the following string as input:
+
+    The String:
+    {"recorded": 1768237200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  E. Modify the original code to pass-in/insert a randomized string into the mongo database each time the code is run
+  F. Create a python function that will remove any key/value pair from a dictionary (like "id" or "_id")
+
+  Now run the generated code and these prompts back through AI as you did in IV and V previously.
+
+
+BEYOND MONGO & PYTHON:
+
+  Use the same technique for other databases like Postgres, MySQL, Redis and Cassandra
+  Use the same technique for other languages like Go, Java, Rust and Swift
