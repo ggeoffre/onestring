@@ -3,9 +3,13 @@
 
 from cassandra_data import raw_cassandra_data
 from mongo_data import raw_mongo_data
+from mysql_data import raw_mysql_data
 
 print("\nCASSANDRA\n#########")
 raw_cassandra_data()
 
 print("\nMONGO\n#########")
 raw_mongo_data()
+
+print("\nMYSQL\n#########")
+raw_mysql_data()
