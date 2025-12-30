@@ -5,6 +5,7 @@ from cassandra_data import raw_cassandra_data
 from mongo_data import raw_mongo_data
 from mysql_data import raw_mysql_data
 from postgres_data import raw_postgres_data
+from redis_data import raw_redis_data
 
 print("\nCASSANDRA\n#########")
 raw_cassandra_data()
@@ -17,3 +18,6 @@ raw_mysql_data()
 
 print("\nPOSTGRES\n#########")
 raw_postgres_data()
+
+print("\nREDIS\n#########")
+raw_redis_data()

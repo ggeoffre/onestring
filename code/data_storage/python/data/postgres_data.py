@@ -78,15 +78,20 @@ def raw_postgres_data():
         # 3. Retrieve
         with connection.cursor(cursor_factory=RealDictCursor) as dict_cursor:
             dict_cursor.execute(f"SELECT * FROM {POSTGRES_TABLE}")
-            results = dict_cursor.fetchall()
+            raw_results = dict_cursor.fetchall()
 
+            results = []
+            for row in raw_results:
+                clean_row = dict(row)
+                clean_row["value"] = float(clean_row["value"])
+                results.append(clean_row)
             if results:
                 print(f"Retrieved {len(results)} records")
                 print(results)
 
         # 4. Delete
         cursor.execute(f"TRUNCATE TABLE {POSTGRES_TABLE}")
-        print("Data purged from PostgreSQL")
+        print("Table truncated")
 
     except psycopg2.Error as e:
         print(f"PostgreSQL Error: {e}")

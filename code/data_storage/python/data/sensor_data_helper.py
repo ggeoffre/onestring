@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2025 ggeoffre, LLC
 
+import datetime
+import decimal
 import json
 import random
 import time
@@ -56,3 +58,14 @@ def create_insert_data_tuple(data):
         data.get("units"),
         float(data.get("value", 0.0)),
     )
+
+
+def json_default(obj):
+    """Handles non-standard JSON types."""
+    if isinstance(obj, decimal.Decimal):
+        return float(obj)
+    if isinstance(obj, (datetime.datetime, datetime.date)):
+        return obj.isoformat()
+    if isinstance(obj, ObjectId):
+        return str(obj)
+    raise TypeError(f"Object of type {obj.__class__.__name__} is not serializable")
