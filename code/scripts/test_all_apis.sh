@@ -55,7 +55,7 @@ fi
 JSON_VALUE=$(awk -v min=22.1 -v max=32.4 'BEGIN{srand(); printf "%.1f\n", min+rand()*(max-min)}');
 JSON_RECORDED=$(date +%s);
 printf -v JSON_STRING '{"recorded":"%s","location":"den","sensor":"bmp280","measurement":"temperature","units":"C","value":%s}' "$JSON_RECORDED" "$JSON_VALUE";
-echo $JSON_STRING
+echo $JSON_STRING; echo
 
 API_TESTER=$(printf '%s' "${1:-}" | tr '[:lower:]' '[:upper:]')
 
@@ -87,10 +87,10 @@ case "$API_TESTER" in
         echo "LOG"
         curl -X POST -H "Content-Type: application/json" -d "$JSON_STRING" "$BASE_URL/log";echo
         echo "REPORT"
-        curl "$BASE_URL/report";echo
+        curl "$BASE_URL/report" -w "\n"; echo
         echo "PURGE"
-        curl "$BASE_URL/purge";echo
-        curl -X POST -d '' "$BASE_URL/purge";echo
+        curl "$BASE_URL/purge"; echo
+        curl -X POST -d '' "$BASE_URL/purge"; echo
         ;;
     *)
         echo "Unknown API tester: $API_TESTER"
