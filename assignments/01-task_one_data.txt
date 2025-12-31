@@ -59,7 +59,7 @@ II. Modify the following prompts to be language and database specific (recommend
   7. Modify all five methods into one source file using this string as the string that is being stored:
 
   The String:
-  {"recorded": 1768237200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+  {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
 
 
 III. Run your python Code
@@ -96,7 +96,7 @@ EXTRA PROMPTS TO TRY:
   D. Create a python function that will update both the "recorded" value with the current Unix Epoch Timestamp, and the "value" with a random number between 22.4 and 34.1, using the following string as input:
 
     The String:
-    {"recorded": 1768237200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+    {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
 
   E. Modify the original code to pass-in/insert a randomized string into the mongo database each time the code is run
   F. Create a python function that will remove any key/value pair from a dictionary (like "id" or "_id")

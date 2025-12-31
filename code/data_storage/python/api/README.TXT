@@ -25,6 +25,10 @@ To execute this code, run the following commands:
 
         python app.py
 
+        -or-
+
+        python app.py runserver 0.0.0.0:8080
+
 
 To test this code, run the following commands:
 

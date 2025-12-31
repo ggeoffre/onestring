@@ -67,7 +67,7 @@ BASE_URL="http://$HOST:$PORT"
 
 case "$API_TESTER" in
     WGET)
-        echo "LOG"
+        echo "ROOT"
         wget -q -O - "$BASE_URL/"; echo
         echo "ECHO"
         wget -q -O - --header='Content-Type: application/json' --post-data="$JSON_STRING" "$BASE_URL/echo"; echo
@@ -80,14 +80,14 @@ case "$API_TESTER" in
         wget -q -O - --post-data='' "$BASE_URL/purge"; echo
         ;;
     CURL)
-        echo "LOG"
+        echo "ROOT"
         curl "$BASE_URL/";echo
         echo "ECHO"
         curl -X POST -H "Content-Type: application/json" -d "$JSON_STRING" "$BASE_URL/echo";echo
         echo "LOG"
         curl -X POST -H "Content-Type: application/json" -d "$JSON_STRING" "$BASE_URL/log";echo
         echo "REPORT"
-        curl "$BASE_URL/report" -w "\n"; echo
+        curl "$BASE_URL/report" -w "\n"
         echo "PURGE"
         curl "$BASE_URL/purge"; echo
         curl -X POST -d '' "$BASE_URL/purge"; echo

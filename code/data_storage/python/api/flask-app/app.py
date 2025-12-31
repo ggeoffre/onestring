@@ -8,7 +8,7 @@ from flask import Flask, Response, jsonify, request
 # Standard JSON constant
 SENSOR_DATA_JSON = json.dumps(
     {
-        "recorded": 1756655999,
+        "recorded": 1768570200,
         "location": "den",
         "sensor": "bmp280",
         "measurement": "temperature",
@@ -50,7 +50,7 @@ app = Flask(__name__)
 
 @app.route("/", methods=["GET"])
 def root():
-    return jsonify({"message": "Sensor API Active"})
+    return jsonify({"message": "Flask API Server is running!"})
 
 
 @app.route("/echo", methods=["POST"])
