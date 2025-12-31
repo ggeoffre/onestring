@@ -67,7 +67,7 @@ III. Run your python Code
   python --version
   pip install --upgrade pip
   pip install -r requirements.txt
-  python app.py
+  python main.py
 
 
 IV. Once fully operational, copy each of the four functions individually, and add it to the following AI prompt...
