@@ -1,0 +1,94 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025 ggeoffre, LLC
+
+   █████████     █████████    █████████  ██████████  █████████   █████████
+  ███░░░░░███   ███░░░░░███  ███░░░░░███░░███░░░░░█ ███░░░░░███ ███░░░░░███
+ ░███    ░███  ███     ░░░  ███     ░░░  ░███  █ ░ ░███    ░░░ ░███    ░░░
+ ░███████████ ░███         ░███          ░██████   ░░█████████ ░░█████████
+ ░███░░░░░███ ░███         ░███          ░███░░█    ░░░░░░░░███ ░░░░░░░░███
+ ░███    ░███ ░░███     ███░░███     ███ ░███ ░   █ ███    ░███ ███    ░███
+ █████   █████ ░░█████████  ░░█████████  ██████████░░█████████ ░░█████████
+░░░░░   ░░░░░   ░░░░░░░░░    ░░░░░░░░░  ░░░░░░░░░░  ░░░░░░░░░   ░░░░░░░░░
+
+
+Using Python's Abstract Base Class technique (and following the PEP8 style guide), this exercise will demonstrate how to create a base class for a sensor data object.  Once the base class is created, we will create a subclass for a specific database access class.  The goal is to create a base class that can be used to store and retrieve sensor data from a database.  This will make it easier to add data sources to a web api app implemented using wither python's Flask or Django framework.
+
+
+
+{
+    "recorded" : 1768570200,
+    "location" : "den",
+    "sensor" : "bmp280",
+    "measurement" : "temperature",
+    "units" : "C",
+    "value" : 22.3
+}
+
+
+I. Start Your Development Environment (recommend using python):
+
+  1. Launch Docker Desktop, and use the terminal within Docker Desktop to:
+    A. Run a python docker container and attach to the mongo database container
+
+      docker run --name python-container -p 8080:8080 -v ~/Workspace/projects/:/usr/src/python -d python:3.13.5 sleep infinity
+
+  2. Launch VS Code, Open Folder, and Create a Terminal to:
+    A. Connect to the python container from teh VS Code Terminal
+
+      docker exec -it -w /usr/src/python python-container /bin/bash
+
+  3. Create the following file structure within VS Code:
+    ./python/access
+    ./python/access/mongo_data_access.py
+    ./python/access/sensor_data_access_protocol.py
+    ./python/access/main.py
+
+
+II. Modify the following prompts to be language and framework specific (recommend using python and flask):
+
+    1. write a Python interface, using the ABC technique, for sensor data access with three abstract methods: log, fetch, and purge, using JSON strings and type hints.
+    2. create an class that implements the sensor data access protocol interface for mongo_data_access.py
+    3. in a main.py file, create an instance of the mongo_data_access class and call the log, fetch, and purge methods
+    4. what would the requirements.txt file look like for this main.py file
+
+
+III. Run your python Code
+
+  python --version
+  pip install --upgrade pip
+  pip install -r requirements.txt
+  python main.py
+
+
+V. Once fully operational, copy each of the four functions individually, and add it to the following AI prompt...
+
+  "Using the following source code, generate an AI prompt that would produce this code:"
+
+    compared to...
+
+  "Using the following source code to generate an AI prompt, using simple english, that would produce this code:"
+
+    NOTE: Cute/paste the code you generated above that sucessfully ran.
+
+
+VI. Now take all of the original prompts from II above, and add it to the following AI prompt...
+
+  "How could each of these prompts be written in a manner to produce 'better' code:"
+
+    NOTE: use any instruction to replace 'better' (like cleaner, efficient, optimized, readable, concise, performant, scalable, maintainable, secure, etc.)
+
+
+EXTRA PROMPTS:
+
+    A. Create a data access implementation class for a cassandra database
+    B. Create a data access implementation class for a postgresql database
+    C. Create a data access implementation class for a mysql database
+    D. Create a data access implementation class for a redis database
+
+  Now run the generated code and these prompts back through AI as you did in IV and V previously.
+
+
+BEYOND FLASK & PYTHON:
+
+  Use the same technique for another python framework like django
+  Use the same technique for other languages and frameworks like Go gin, Java spring, Rust acix and Swift vapor
