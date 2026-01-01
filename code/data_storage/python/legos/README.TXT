@@ -25,7 +25,7 @@ To execute this code, run the following commands:
 
     5. Run the code (from within the Python Runtime Docker container you just connected to):
 
-        python app.py
+        export DATA_ACCESS=mongo; python app.py
 
         -or-
 
