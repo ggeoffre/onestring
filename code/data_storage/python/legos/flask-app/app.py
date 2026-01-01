@@ -4,13 +4,13 @@
 import json
 
 import sensor_data_helper
+from cassandra_data_access import CassandraDataAccess
 from flask import Flask, Response, jsonify, request
-from mongo_data_access import MongoDataAccess
 from sensor_data_access_protocol import SensorDataAccess
 
 
 def get_data_access() -> SensorDataAccess:
-    return MongoDataAccess()
+    return CassandraDataAccess()
 
 
 app = Flask(__name__)
@@ -42,14 +42,19 @@ def log():
 
 @app.route("/report", methods=["GET"])
 def report():
-    data_access = get_data_access()
-    data = data_access.fetch_sensor_data()
-    csv_data = sensor_data_helper.json_list_to_csv(data)
-    return Response(
-        csv_data,
-        mimetype="text/csv",
-        headers={"Content-Disposition": "attachment; filename=sensor_report.csv"},
-    )
+    try:
+        data_access = get_data_access()
+        data = data_access.fetch_sensor_data()
+        csv_data = sensor_data_helper.json_list_to_csv(data)
+        if not csv_data:
+            return jsonify({"error": "No data available"}), 404
+        return Response(
+            csv_data,
+            mimetype="text/csv",
+            headers={"Content-Disposition": "attachment; filename=sensor_report.csv"},
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/purge", methods=["GET", "POST"])

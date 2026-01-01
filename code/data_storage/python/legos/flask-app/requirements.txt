@@ -2,4 +2,5 @@
 # Copyright (C) 2025 ggeoffre, LLC
 
 flask
+cassandra-driver
 pymongo
