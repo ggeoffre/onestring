@@ -63,6 +63,7 @@ III. Run your python Code
   python --version
   pip install --upgrade pip
   pip install -r requirements.txt
+  export DATA_HOSTNAME="YOUR_LOACAL_MACHINE_IP_ADDRESS"
   python app.py
 
 

@@ -8,7 +8,7 @@ from cassandra import DriverException
 from cassandra.cluster import Cluster
 
 # Configurations
-CASS_HOST = os.environ.get("DATA_HOSTNAME", "192.168.1.60").lower()
+CASS_HOST = os.environ.get("DATA_HOSTNAME", "localhost").lower()
 CASS_PORT = 9042
 CASS_KEYSPACE = "sensor_data_db"
 CASS_TABLE = "sensor_data"

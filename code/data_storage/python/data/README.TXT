@@ -27,4 +27,5 @@ To execute this code, run the following commands:
 
     5. Run the code (from within the Python Runtime Docker container you just connected to):
 
+        export DATA_HOSTNAME="YOUR_LOACAL_MACHINE_IP_ADDRESS"
         python main.py

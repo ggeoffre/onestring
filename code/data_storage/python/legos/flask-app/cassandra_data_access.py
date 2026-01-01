@@ -9,7 +9,7 @@ from cassandra.cluster import Cluster, Session
 from sensor_data_access_protocol import SensorDataAccess
 
 # Configurations
-CASS_HOST = os.environ.get("DATA_HOSTNAME", "192.168.1.60").lower()
+CASS_HOST = os.environ.get("DATA_HOSTNAME", "localhost").lower()
 CASS_PORT = 9042
 CASS_KEYSPACE = "sensor_data_db"
 CASS_TABLE = "sensor_data"

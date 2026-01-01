@@ -8,7 +8,7 @@ import pymysql.cursors
 import sensor_data_helper
 
 # Configurations
-MYSQL_HOST = os.environ.get("DATA_HOSTNAME", "192.168.1.60").lower()
+MYSQL_HOST = os.environ.get("DATA_HOSTNAME", "localhost").lower()
 MYSQL_PORT = 3306
 MYSQL_DB = "sensor_data_db"
 MYSQL_TABLE = "sensor_data"

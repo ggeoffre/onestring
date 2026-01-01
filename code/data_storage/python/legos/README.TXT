@@ -25,10 +25,12 @@ To execute this code, run the following commands:
 
     5. Run the code (from within the Python Runtime Docker container you just connected to):
 
+        export DATA_HOSTNAME="YOUR_LOACAL_MACHINE_IP_ADDRESS"
         export DATA_ACCESS=mongo; python app.py
 
         -or-
 
+        export DATA_HOSTNAME="YOUR_LOACAL_MACHINE_IP_ADDRESS"
         export DATA_ACCESS=mongo; python app.py runserver 0.0.0.0:8080
 
 

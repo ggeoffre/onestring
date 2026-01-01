@@ -8,7 +8,7 @@ import sensor_data_helper
 from psycopg2.extras import RealDictCursor
 from sensor_data_access_protocol import SensorDataAccess
 
-POSTGRES_HOST = os.environ.get("DATA_HOSTNAME", "192.168.1.60").lower()
+POSTGRES_HOST = os.environ.get("DATA_HOSTNAME", "localhost").lower()
 POSTGRES_PORT = 5432
 POSTGRES_DB = "sensor_data_db"
 POSTGRES_TABLE = "sensor_data"

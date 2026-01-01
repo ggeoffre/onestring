@@ -7,7 +7,7 @@ import os
 import redis
 import sensor_data_helper
 
-REDIS_HOST = os.environ.get("DATA_HOSTNAME", "192.168.1.60").lower()
+REDIS_HOST = os.environ.get("DATA_HOSTNAME", "localhost").lower()
 REDIS_PORT = 6379
 REDIS_KEY_BASE = "location:den:list"
 

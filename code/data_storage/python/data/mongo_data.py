@@ -7,7 +7,7 @@ import pymongo
 import sensor_data_helper
 
 # Configurations
-MONGO_HOST = os.environ.get("DATA_HOSTNAME", "192.168.1.60").lower()
+MONGO_HOST = os.environ.get("DATA_HOSTNAME", "localhost").lower()
 MONGO_PORT = 27017
 MONGO_DB = "sensor_data_db"
 MONGO_COLLECTION = "sensor_data"
