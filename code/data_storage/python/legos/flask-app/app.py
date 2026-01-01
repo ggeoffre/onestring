@@ -5,12 +5,12 @@ import json
 
 import sensor_data_helper
 from flask import Flask, Response, jsonify, request
-from postgres_data_access import PostgresDataAccess
+from redis_data_access import RedisDataAccess
 from sensor_data_access_protocol import SensorDataAccess
 
 
 def get_data_access() -> SensorDataAccess:
-    return PostgresDataAccess()
+    return RedisDataAccess()
 
 
 app = Flask(__name__)
