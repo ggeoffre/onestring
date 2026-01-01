@@ -2,4 +2,8 @@
 # Copyright (C) 2025 ggeoffre, LLC
 
 django
+cassandra-driver
 pymongo
+pymysql
+psycopg2-binary
+redis

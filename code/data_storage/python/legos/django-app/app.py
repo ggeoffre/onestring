@@ -11,11 +11,27 @@ from django.core.management import execute_from_command_line
 from django.http import HttpResponse, JsonResponse
 from django.urls import path, re_path
 from mongo_data_access import MongoDataAccess
+from mysql_data_access import MySQLDataAccess
+from postgres_data_access import PostgresDataAccess
+from redis_data_access import RedisDataAccess
 from sensor_data_access_protocol import SensorDataAccess
 
 
 def get_data_access() -> SensorDataAccess:
-    return MongoDataAccess()
+    data_access_type = os.getenv("DATA_ACCESS", "mongo")
+
+    if data_access_type == "redis":
+        return RedisDataAccess()
+    elif data_access_type == "mongo":
+        return MongoDataAccess()
+    elif data_access_type == "cassandra":
+        return CassandraDataAccess()
+    elif data_access_type == "mysql":
+        return MySQLDataAccess()
+    elif data_access_type == "postgres":
+        return PostgresDataAccess()
+    else:
+        raise ValueError(f"Unsupported DATA_ACCESS type: {data_access_type}")
 
 
 # Configure Django settings
