@@ -18,7 +18,7 @@ MONGO_COLLECTION = "sensor_data"
 class MongoDataAccess(SensorDataAccess):
     """MongoDB implementation of SensorDataAccess."""
 
-    def get_connection(self):
+    def get_connection(self) -> tuple:
         try:
             client = pymongo.MongoClient(
                 f"mongodb://{MONGO_HOST}:{MONGO_PORT}/", serverSelectionTimeoutMS=5000

@@ -4,13 +4,13 @@
 import json
 
 import sensor_data_helper
-from cassandra_data_access import CassandraDataAccess
 from flask import Flask, Response, jsonify, request
+from mysql_data_access import MySQLDataAccess
 from sensor_data_access_protocol import SensorDataAccess
 
 
 def get_data_access() -> SensorDataAccess:
-    return CassandraDataAccess()
+    return MySQLDataAccess()
 
 
 app = Flask(__name__)
