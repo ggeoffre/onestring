@@ -5,12 +5,12 @@ import json
 
 import sensor_data_helper
 from flask import Flask, Response, jsonify, request
-from mysql_data_access import MySQLDataAccess
+from postgres_data_access import PostgresDataAccess
 from sensor_data_access_protocol import SensorDataAccess
 
 
 def get_data_access() -> SensorDataAccess:
-    return MySQLDataAccess()
+    return PostgresDataAccess()
 
 
 app = Flask(__name__)
