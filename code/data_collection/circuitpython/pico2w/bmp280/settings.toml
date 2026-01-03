@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025 ggeoffre, LLC
+
+CIRCUITPY_WIFI_SSID = "your_wifi_ssid"
+CIRCUITPY_WIFI_PASSWORD = "your_wifi_password"
+API_URL = "your-api-endpoint.com"

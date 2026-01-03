@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025 ggeoffre, LLC
+
+Adafruit CircuitPython 10.0.3 on 2025-10-17; Raspberry Pi Pico 2 W with rp2350a
+Board ID:raspberry_pi_pico2_w
+UID:433B7CA73B147C1E
+MAC:88:A2:9E:00:9C:39
