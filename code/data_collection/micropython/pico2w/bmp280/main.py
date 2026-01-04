@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Translation for MicroPython - 2026
+# Copyright (C) 2025-2026 ggeoffre, LLC
 
 import os
 import time

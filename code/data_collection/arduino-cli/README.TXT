@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2025 ggeoffre, LLC
+# Copyright (C) 2025-2026 ggeoffre, LLC
 
  ▄▄▄  ▄▄▄▄  ▄▄▄▄  ▄▄ ▄▄ ▄▄ ▄▄  ▄▄  ▄▄▄       ▄▄▄▄ ▄▄    ▄▄
 ██▀██ ██▄█▄ ██▀██ ██ ██ ██ ███▄██ ██▀██ ▄▄▄ ██▀▀▀ ██    ██
@@ -113,7 +113,7 @@ V. Now take all of the original prompts from II above, and add it to the followi
     NOTE: use any instruction to replace 'better' (like cleaner, efficient, optimized, readable, concise, performant, scalable, maintainable, secure, etc.)
 
 
-BEYOND BMP280 & CIRCUITPYTHON ON PICO2W:
+BEYOND BMP280 & ARDUINO-CLI ON PICO2W:
 
     Use the same technique for other I2C sensors like the BME280/P581, SHT4x/3x, DHT11/DHT22, or HDC3022/AHT20
     Use the same technique for other development boards like the ESP32-C6/S3 or Arduino Nano
