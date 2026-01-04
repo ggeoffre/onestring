@@ -5,7 +5,7 @@
 ██▀▄▀██ ██ ██▀▀▀ ██▄█▄ ██▀██ ██▄█▀ ▀███▀   ██   ██▄██ ██▀██ ███▄██
 ██   ██ ██ ▀████ ██ ██ ▀███▀ ██      █     ██   ██ ██ ▀███▀ ██ ▀██
 
-For Micropython development, I recommend using a Raspberry Pi 5 with at least 8GB RAM, a USB-C power supply, and a M.2 NVME drive as your development environment.  Given that you will be messing around wiht current and wires, one doesn't want to short out their USB port of their more expensive computer or laptop.  It is also not possible to use a Docker container for Circuitpython development, as you must be able to connect to various development boards using serial communications over USB.  Circuitpython is easire to get a development environment up and running as it does not need to compile your code.  It also has a huge library of modules that can be used to interact with various sensors and devices.
+For Micropython development, I recommend using a Raspberry Pi 5 with at least 8GB RAM, a USB-C power supply, and a M.2 NVME drive as your development environment.  Given that you will be messing around wiht current and wires, one doesn't want to short out their USB port of their more expensive computer or laptop.  It is also not possible to use a Docker container for Circuitpython development, as you must be able to connect to various development boards using serial communications over USB.  Micropython is easire to get a development environment up and running as it does not need to compile your code.  It also has a modestly sized library of modules that can be used to interact with various sensors and devices.
 
 {
     "recorded" : 1768570200,
@@ -34,7 +34,7 @@ I. Raspberry Pi Setup
         sudo apt-get install -y python3 python3-pip git tio minicom nano vim
         sudo shutdown -r now
 
-    3. Check to see if your microcontroller board is mounted as a drive vai teh USB cable (below assumes Pico 2 W board):
+    3. Check to see if your microcontroller board is mounted as a drive vai the USB cable (below assumes Pico 2 W board):
 
         Enter Bootloader: Press and hold the BOOTSEL button on your Pico W, then plug it into your computer via a micro USB cable.
         echo; lsblk | grep -E "sd[a-zA-Z][0-9]"; echo; ls -laR /media/*
@@ -48,6 +48,7 @@ I. Raspberry Pi Setup
 
         pip install mpremote
 
+
 II. Use the following prompts to generate the code:
 
     A. Write a MicropythonPython program that talks to a BMP280 sensor connected to a Raspberry Pi Pico 2 W microcontroller board over i2c and read the current temperature.
@@ -57,7 +58,8 @@ II. Use the following prompts to generate the code:
 
     The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
 
-    NOTE: The goal is to use Micropython to read temperature data off of a bmp280 sensor connected to a Raspberry Pi Pico 2 W microcontroller board over i2c, then post the collected temperature data to an API running on the network)
+    NOTE: The goal is to use this Micropython code to read temperature data off of a bmp280 sensor connected to a Raspberry Pi Pico 2 W microcontroller board over i2c, then post the collected temperature data to an API running on the network)
+
 
 III. Build, deploy and run your python Code
 
@@ -86,6 +88,7 @@ V. Now take all of the original prompts from II above, and add it to the followi
   "How could each of these prompts be written in a manner to produce 'better' code:"
 
     NOTE: use any instruction to replace 'better' (like cleaner, efficient, optimized, readable, concise, performant, scalable, maintainable, secure, etc.)
+
 
 BEYOND BMP280 & CIRCUITPYTHON ON PICO2W:
 
