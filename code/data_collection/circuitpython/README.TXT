@@ -24,6 +24,7 @@ I. Raspberry Pi Setup
        Raspberry Pi 5 8GB 0r 16GB w/ SD Card
        Raspberry Pi Pico 2 W (w/ header pins)
        Adafruit PiCowBell for Pico (w/ Stemma/QT)
+       Adafruit BMP280 I2C Sensor (w/ Stemma/QT)
        USB-A to micro-USB Cable
        STEMMA QT / Qwiic JST SH 4-Pin Cable
 
@@ -35,6 +36,7 @@ I. Raspberry Pi Setup
 
     3. Check to see if your microcontroller board is mounted as a drive vai teh USB cable (below assumes Pico 2 W board):
 
+        Enter Bootloader: Press and hold the BOOTSEL button on your Pico W, then plug it into your computer via a micro USB cable.
         echo; lsblk | grep -E "sd[a-zA-Z][0-9]"; echo; ls -laR /media/*
         cat /media/$USER/RP2350/INFO_UF2.TXT
 
@@ -88,6 +90,6 @@ V. Now take all of the original prompts from II above, and add it to the followi
 
 BEYOND BMP280 & CIRCUITPYTHON ON PICO2W:
 
-  Use the same technique for other I2C sensors like the BME280 or SHT31
-  Use the same technique for other development boards like the ESP32-C6 or Arduino Nano
-  Use the same technique for other platforms like Micropython, Arduino, ESP-IDF and PICO-SDK
+    Use the same technique for other I2C sensors like the BME280/P581, SHT4x/3x, DHT11/DHT22, or HDC3022/AHT20
+    Use the same technique for other development boards like the ESP32-C6/S3 or Arduino Nano
+    Use the same technique for other platforms like Micropython, Arduino, ESP-IDF and PICO-SDK
