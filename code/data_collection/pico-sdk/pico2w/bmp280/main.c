@@ -234,9 +234,15 @@ typedef struct {
 // TCP error callback
 static void tcp_error_cb(void *arg, err_t err) {
     tcp_state_t *state = (tcp_state_t *)arg;
-    printf("TCP error: %d\n", err);
-    state->complete = true;
-    state->success = false;
+    // ERR_ABRT (-13) after successful response is normal - server closed connection
+    if (err == ERR_ABRT && state->success) {
+        // This is fine - we already got our response
+        state->complete = true;
+    } else {
+        printf("TCP error: %d\n", err);
+        state->complete = true;
+        state->success = false;
+    }
 }
 
 // TCP sent callback
@@ -256,8 +262,12 @@ static err_t tcp_recv_cb(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t e
     tcp_state_t *state = (tcp_state_t *)arg;
 
     if (p == NULL) {
-        // Connection closed
-        printf("Connection closed by server\n");
+        // Connection closed by server - this is normal after HTTP response
+        if (state->success) {
+            printf("Connection closed by server (normal)\n");
+        } else {
+            printf("Connection closed by server\n");
+        }
         state->complete = true;
         tcp_close(pcb);
         return ERR_OK;
@@ -276,8 +286,9 @@ static err_t tcp_recv_cb(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t e
         tcp_recved(pcb, p->tot_len);
         pbuf_free(p);
 
-        state->complete = true;
+        // Close our side of the connection
         tcp_close(pcb);
+        state->complete = true;
     }
 
     return ERR_OK;
