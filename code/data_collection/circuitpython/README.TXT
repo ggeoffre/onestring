@@ -60,7 +60,7 @@ II. Use the following prompts to generate the code:
 
     NOTE: The goal is to use this Circuitpython code to read temperature data off of a bmp280 sensor connected to a Raspberry Pi Pico 2 W microcontroller board over i2c, then post the collected temperature data to an API running on the network)
 
-III. Run your python Code
+III. Build, deploy and run your CircuitPython Code
 
     cp -f code.py /media/$USER/CIRCUITPY
     cp -f settings.toml /media/$USER/CIRCUITPY
@@ -79,7 +79,7 @@ IV. Once fully operational, copy each of the four functions individually, and ad
 
   "Using the following source code to generate an AI prompt, using simple english, that would produce this code:"
 
-    NOTE: Cute/paste the code you generated above that sucessfully ran.
+    NOTE: Cut/paste the code you generated above that sucessfully ran.
 
 
 V. Now take all of the original prompts from II above, and add it to the following AI prompt...
@@ -93,3 +93,46 @@ BEYOND BMP280 & CIRCUITPYTHON ON PICO2W:
     Use the same technique for other I2C sensors like the BME280/P581, SHT4x/3x, DHT11/DHT22, or HDC3022/AHT20
     Use the same technique for other development boards like the ESP32-C6/S3 or Arduino Nano
     Use the same technique for other platforms like Micropython, Arduino, ESP-IDF and PICO-SDK
+
+
+
+         ▞▀▖▞▀▖      ▞▀▖      ▞▀▖▞▀▖   ▞▀▖
+▞▀▖▞▀▘▛▀▖ ▄▘ ▗▘▄▄▖▞▀▘ ▄▘▄▄▖▛▀▖ ▄▘ ▗▘▙▀▖▚▄▘
+▛▀ ▝▀▖▙▄▘▖ ▌▗▘    ▝▀▖▖ ▌   ▌ ▌▖ ▌▗▘ ▌  ▌ ▌
+▝▀▘▀▀ ▌  ▝▀ ▀▀▘   ▀▀ ▝▀    ▘ ▘▝▀ ▀▀▘▘  ▝▀
+☸ ────────────────────────
+ESP32-S3-DevKitC-1 v1.1
+https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s3/esp32-s3-devkitc-1/user_guide_v1.1.html
+https://circuitpython.org/board/espressif_esp32s3_devkitc_1_n32r8/
+
+    IMPORTANT: You must select the exact Circuitpython download binary image that matches your board and ESP32-S3-DevKitC-1 v1.1.  Most importantly the correct image size based on your board's memory capacity.  The following is explicitly for the esp32-s3-devkitc-1-n32r8, meaning it has 32MB of flash memory (storage).
+
+    A. Additional tools:
+
+        python -m pip install --upgrade esptool --break-system-packages
+        esptool -p /dev/ttyACM0 chip-id
+
+    B. Installing CircuitPython:
+
+        esptool -p /dev/ttyACM0 erase-flash
+        wget https://downloads.circuitpython.org/bin/espressif_esp32s3_devkitc_1_n32r8/en_US/adafruit-circuitpython-espressif_esp32s3_devkitc_1_n32r8-en_US-10.0.3.bin
+        esptool --chip esp32s3 --port /dev/ttyACM0 write_flash -z 0x0 adafruit-circuitpython-espressif_esp32s3_devkitc_1_n32r8-en_US-10.0.3.bin
+
+    C. Code changes:
+
+        NOTE: For the most part, the code changes are minimal.  All you should need to change is the pinouts for the I2C bus.
+
+        # 1. Initialize I2C for ESP32-S3-DevKitC-1-N32R8
+        i2c = busio.I2C(board.IO9, board.IO8)  # SCL, SDA
+        bmp280 = adafruit_bmp280.Adafruit_BMP280_I2C(i2c, address=0x77)
+
+    D. Build, deploy and run your CircuitPython Code
+
+        cp -f code.py /media/$USER/CIRCUITPY
+        cp -f settings.toml /media/$USER/CIRCUITPY
+        circup install --auto
+
+        find /sys/bus/usb/devices/usb*/ -name dev 2> /dev/null | grep tty 2> /dev/null
+        tio /dev/ttyACM0
+
+        NOTE: circup will read the boards boot_out.txt and automatically download all required libraries listed in the code.py imports

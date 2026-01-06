@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+Adafruit CircuitPython 10.0.3 on 2025-10-17; ESP32-S3-DevKitC-1-N32R8 with ESP32S3
+Board ID:espressif_esp32s3_devkitc_1_n32r8
+UID:C7FD1ABF3049
+MAC:80:94:CB:3F:90:D1

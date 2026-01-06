@@ -116,7 +116,7 @@ IV. Once fully operational, copy each of the four functions individually, and ad
 
   "Using the following source code to generate an AI prompt, using simple english, that would produce this code:"
 
-    NOTE: Cute/paste the code you generated above that sucessfully ran.
+    NOTE: Cut/paste the code you generated above that sucessfully ran.
 
 
 V. Now take all of the original prompts from II above, and add it to the following AI prompt...
@@ -130,4 +130,4 @@ BEYOND BMP280 & PICO-SDK ON PICO2W:
 
     Use the same technique for other I2C sensors like the BME280/P581, SHT4x/3x, DHT11/DHT22, or HDC3022/AHT20
     Use the same technique for other development boards like the ESP32-C6/S3 or Arduino Nano
-    Use the same technique for other platforms like Micropython, Circuitpython, Arduino and PICO-SDK
+    Use the same technique for other platforms like Micropython, Circuitpython, Arduino and ESP-IDF

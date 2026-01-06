@@ -28,12 +28,11 @@ void setup() {
   unsigned long startWait = millis();
   while (!Serial && millis() - startWait < 3000);
 
-  // 1. Initialize I2C for Pico 2 W (GP4=SDA, GP5=SCL)
-  Wire.setSDA(4);
-  Wire.setSCL(5);
+  // 1. Initialize I2C for ESP32-S3 (GPIO 8=SDA, GPIO 9=SCL)
+  Wire.setPins(8, 9);
   if (!bmp.begin(0x77)) {
-    Serial.println("Error: Could not find BMP280 sensor!");
-    while (1);
+      Serial.println("Error: Could not find BMP280 sensor!");
+      while (1);
   }
 
   // 2. Connect to WiFi with timeout

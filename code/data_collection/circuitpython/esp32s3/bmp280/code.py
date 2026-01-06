@@ -14,8 +14,8 @@ import rtc
 import socketpool
 import wifi
 
-# 1. Initialize I2C for Pico 2 W (Standard GP4/GP5)
-i2c = busio.I2C(board.GP5, board.GP4)
+# 1. Initialize I2C for ESP32-S3-DevKitC-1-N32R8
+i2c = busio.I2C(board.IO9, board.IO8)  # SCL, SDA
 bmp280 = adafruit_bmp280.Adafruit_BMP280_I2C(i2c, address=0x77)
 
 # 2. Connect to WiFi using settings.toml variables
