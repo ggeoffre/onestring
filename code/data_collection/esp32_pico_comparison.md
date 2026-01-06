@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
 # ESP-IDF (ESP32-S3) vs Pico SDK (Pico 2 W) Implementation Comparison
 
 ## Overview
