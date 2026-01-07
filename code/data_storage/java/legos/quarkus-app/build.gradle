@@ -1,0 +1,30 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+plugins {
+    id 'java'
+    id 'io.quarkus' version '3.30.5'
+}
+
+group = 'com.ggeoffre'
+version = '1.0.0-SNAPSHOT'
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation enforcedPlatform("io.quarkus:quarkus-bom:3.30.5")
+    implementation 'io.quarkus:quarkus-resteasy'
+    implementation 'io.quarkus:quarkus-resteasy-jackson'
+    implementation 'com.datastax.oss:java-driver-core:4.17.0'
+    implementation 'org.mongodb:mongodb-driver-sync:5.6.2'
+    implementation 'com.mysql:mysql-connector-j:9.5.0'
+    implementation 'org.postgresql:postgresql:42.7.8'
+    implementation 'redis.clients:jedis:7.2.0'
+    implementation 'org.json:json:20251224'
+}

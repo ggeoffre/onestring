@@ -1,0 +1,22 @@
+<!-- SPDX-License-Identifier: GPL-3.0-or-later
+Copyright (C) 2025-2026 ggeoffre, LLC -->
+<configuration>
+    <!-- Define where the logs go (the console) -->
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern
+            >%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Silence the noisy libraries (use WARN to see errors, or OFF to see nothing) -->
+    <logger name="io.netty" level="WARN" />
+    <logger name="com.datastax.oss.driver" level="WARN" />
+    <logger name="org.mongodb.driver" level="WARN" />
+    <logger name="org.apache.cassandra" level="WARN" />
+
+    <!-- Keep your own application logs visible -->
+    <root level="INFO">
+        <appender-ref ref="STDOUT" />
+    </root>
+</configuration>

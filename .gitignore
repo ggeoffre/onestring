@@ -205,3 +205,29 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Java/Maven
+target/        # Maven build output directory
+pom.xml.tag
+pom.xml.next
+pom.xml.bak
+pom.xml.versions
+pom.xml.releaseBackup
+results/
+bin/           # Compiled binaries
+*.class        # Compiled Java class files
+*.jar          # Java archive files
+*.war          # Web application archive files
+*.ear          # Enterprise application archive files
+
+# Java IDEs and Tools
+.idea/         # IntelliJ IDEA project files
+.vscode/       # VS Code project files
+.settings/     # Eclipse project files
+.project       # Eclipse project file
+.classpath     # Eclipse project file
+nbproject/private/ # NetBeans project files
+*.iml          # IntelliJ project module file
+*.ipr          # IntelliJ project file
+*.iws          # IntelliJ workspace file
+.cache/        # Caching folders

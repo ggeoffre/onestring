@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+server:
+  address: 0.0.0.0
+  port: 8080
+spring:
+  data:
+    mongodb:
+      host: 192.168.1.60
+      port: 27017
+      database: sensor_data_db
+      auto-index-creation: false
+      uri: mongodb://192.168.1.60:27017/sensor_data_db

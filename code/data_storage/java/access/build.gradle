@@ -1,0 +1,27 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+plugins {
+    id 'java'
+    id 'application'
+}
+
+group = 'com.ggeoffre'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+application {
+    mainClass = 'com.ggeoffre.app.Main'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Add dependencies here
+}
