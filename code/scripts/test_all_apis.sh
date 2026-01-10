@@ -38,7 +38,7 @@ EXAMPLES:
     $0 --help
 
 SAMPLE OUTPUT:
-    {"recorded":"1768570200","location":"den","sensor":"bmp280","measurement":"temperature","units":"C","value":25.3}
+    {"recorded":1768570200,"location":"den","sensor":"bmp280","measurement":"temperature","units":"C","value":25.3}
     API Tester: WGET
     LOG
     ... (output from wget) ...
@@ -54,7 +54,7 @@ fi
 
 JSON_VALUE=$(awk -v min=22.1 -v max=32.4 'BEGIN{srand(); printf "%.1f\n", min+rand()*(max-min)}');
 JSON_RECORDED=$(date +%s);
-printf -v JSON_STRING '{"recorded":"%s","location":"den","sensor":"bmp280","measurement":"temperature","units":"C","value":%s}' "$JSON_RECORDED" "$JSON_VALUE";
+printf -v JSON_STRING '{"recorded":%s,"location":"den","sensor":"bmp280","measurement":"temperature","units":"C","value":%s}' "$JSON_RECORDED" "$JSON_VALUE";
 echo $JSON_STRING; echo
 
 API_TESTER=$(printf '%s' "${1:-}" | tr '[:lower:]' '[:upper:]')

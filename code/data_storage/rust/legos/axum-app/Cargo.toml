@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+[package]
+name = "axum-app"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = "0.8.6"
+cdrs-tokio = "8.1.9"
+digest = "0.10"
+futures = "0.3"
+log = "0.4.29"
+mongodb = "2.5"
+rand_core = "0.6"
+redis = { version = "1.0", features = ["tokio-comp"] }
+serde_json = "1.0.145"
+sqlx = { version = "0.8.6", features = ["mysql", "postgres", "runtime-tokio-native-tls"] }
+time = "0.3"
+tokio = { version = "1", features = ["full"] }
