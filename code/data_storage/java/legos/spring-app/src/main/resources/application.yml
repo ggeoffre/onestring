@@ -7,8 +7,8 @@ server:
 spring:
   data:
     mongodb:
-      host: 192.168.1.60
+      host: localhost
       port: 27017
       database: sensor_data_db
       auto-index-creation: false
-      uri: mongodb://192.168.1.60:27017/sensor_data_db
+      uri: mongodb://localhost:27017/sensor_data_db

@@ -6,7 +6,7 @@ use sqlx::{MySqlPool, Row};
 use log::info;
 use crate::sensor_data_json_helper::validate_sensor_json;
 
-const DATABASE_URL: &str = "mysql://root:@192.168.1.60:3306/sensor_data_db";
+const DATABASE_URL: &str = "mysql://root:@localhost:3306/sensor_data_db";
 
 async fn get_pool() -> Result<MySqlPool, sqlx::Error> {
     MySqlPoolOptions::new().max_connections(5).connect(DATABASE_URL).await

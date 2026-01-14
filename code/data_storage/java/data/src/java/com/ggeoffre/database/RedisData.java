@@ -10,7 +10,7 @@ import redis.clients.jedis.Jedis;
 public class RedisData {
 
     // Configuration constants (consider externalizing for production)
-    private static final String REDIS_HOST = "192.168.1.60";
+    private static final String REDIS_HOST = "localhost";
     private static final int REDIS_PORT = 6379;
     private static final String SENSOR_DATA_KEY = "sensor_data_db:sensor_data";
 

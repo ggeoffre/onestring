@@ -49,7 +49,7 @@ func NewMongoDataAccess() (*MongoDataAccess, error) {
 	defer log.SetOutput(log.Writer())
 
 	// Connect to MongoDB
-	clientOpts := options.Client().ApplyURI("mongodb://192.168.1.60:27017")
+	clientOpts := options.Client().ApplyURI("mongodb://localhost:27017")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

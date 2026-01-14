@@ -13,7 +13,7 @@ public class RedisDataAccess: SensorDataAccess {
     private func connect() async throws -> RedisConnection {
         let group = MultiThreadedEventLoopGroup.singleton
         let future = RedisConnection.make(
-            configuration: try RedisConnection.Configuration(hostname: "192.168.1.60", port: 6379),
+            configuration: try RedisConnection.Configuration(hostname: "localhost", port: 6379),
             boundEventLoop: group.next()
         )
         return try await future.get()

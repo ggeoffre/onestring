@@ -8,7 +8,7 @@ use tokio::task;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{PgPool, Row};
 
-const DATABASE_URL: &str = "postgres://postgres:@192.168.1.60:5432/sensor_data_db";
+const DATABASE_URL: &str = "postgres://postgres:@localhost:5432/sensor_data_db";
 
 async fn get_pool() -> Result<PgPool, Box<dyn Error + Send + Sync>> {
     PgPoolOptions::new()

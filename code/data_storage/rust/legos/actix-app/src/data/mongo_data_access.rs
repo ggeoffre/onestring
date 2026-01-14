@@ -8,7 +8,7 @@ use tokio::task;
 use mongodb::{options::ClientOptions, Client, bson::doc, bson::Document};
 use futures::stream::StreamExt;
 
-const MONGO_URI: &str = "mongodb://192.168.1.60:27017";
+const MONGO_URI: &str = "mongodb://localhost:27017";
 const DATABASE_NAME: &str = "sensor_data_db";
 const COLLECTION_NAME: &str = "sensor_data";
 

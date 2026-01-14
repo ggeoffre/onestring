@@ -9,7 +9,7 @@ public class MongoDataAccess: SensorDataAccess {
 
     // Connect to MongoDB server and access the database and collection
     private func connect() async throws -> MongoKitten.MongoCollection {
-        let settings = try ConnectionSettings("mongodb://192.168.1.60:27017")
+        let settings = try ConnectionSettings("mongodb://localhost:27017")
         let connection = try await MongoConnection.connect(settings: settings)
         let database = connection["sensor_data_db"]
         return database["sensor_data"]

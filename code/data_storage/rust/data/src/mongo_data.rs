@@ -7,7 +7,7 @@ use log::info;
 use crate::sensor_data_json_helper::validate_sensor_json;
 
 async fn get_sensor_data_collection() -> Result<mongodb::Collection<Document>, String> {
-    let client_uri = "mongodb://192.168.1.60:27017";
+    let client_uri = "mongodb://localhost:27017";
     let options = ClientOptions::parse(client_uri).await.map_err(|e| format!("ClientOptions error: {}", e))?;
     let client = Client::with_options(options).map_err(|e| format!("Client error: {}", e))?;
     Ok(client.database("sensor_data_db").collection("sensor_data"))

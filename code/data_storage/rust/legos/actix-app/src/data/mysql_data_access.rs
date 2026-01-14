@@ -8,7 +8,7 @@ use tokio::task;
 use sqlx::mysql::MySqlPoolOptions;
 use sqlx::{MySqlPool, Row};
 
-const DATABASE_URL: &str = "mysql://root:@192.168.1.60:3306/sensor_data_db";
+const DATABASE_URL: &str = "mysql://root:@localhost:3306/sensor_data_db";
 
 async fn get_pool() -> Result<MySqlPool, Box<dyn Error + Send + Sync>> {
     MySqlPoolOptions::new()

@@ -30,7 +30,7 @@ public class PostgresDataAccess: SensorDataAccess {
         let eventLoop = eventLoopGroup.next()
         let logger = Logger(label: "PostgresNIO_Connection")
         let configuration = PostgresConnection.Configuration(
-            host: "192.168.1.60",
+            host: "localhost",
             port: 5432,
             username: "postgres",
             password: "postgres",

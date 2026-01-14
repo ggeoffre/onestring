@@ -12,7 +12,7 @@ import org.bson.Document;
 public class MongoData {
 
     // Configuration constants (consider externalizing for production)
-    private static final String MONGO_URI = "mongodb://192.168.1.60:27017";
+    private static final String MONGO_URI = "mongodb://localhost:27017";
     private static final String DATABASE_NAME = "sensor_data_db";
     private static final String COLLECTION_NAME = "sensor_data";
 

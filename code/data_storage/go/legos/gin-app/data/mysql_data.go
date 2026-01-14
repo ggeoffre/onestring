@@ -39,7 +39,7 @@ type MySQLDataAccess struct {
 // NewMySQLDataAccess creates a new MySQLDataAccess instance and connects
 func NewMySQLDataAccess() (*MySQLDataAccess, error) {
 	// Initialize MySQL connection to default 'mysql' database
-	db, err := sql.Open("mysql", "root:@tcp(192.168.1.60:3306)/mysql?parseTime=true")
+	db, err := sql.Open("mysql", "root:@tcp(localhost:3306)/mysql?parseTime=true")
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}

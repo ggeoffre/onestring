@@ -13,7 +13,7 @@ use cdrs_tokio::cluster::TcpConnectionManager;
 use cdrs_tokio::query_values;
 use cdrs_tokio::types::IntoRustByName;
 
-const CASSANDRA_SERVER_IP: &str = "192.168.1.60";
+const CASSANDRA_SERVER_IP: &str = "localhost";
 const CASSANDRA_SERVER_PORT: u16 = 9042;
 const KEYSPACE_NAME: &str = "sensor_data_db";
 const TABLE_NAME: &str = "sensor_data";

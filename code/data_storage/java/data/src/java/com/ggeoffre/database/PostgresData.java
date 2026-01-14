@@ -11,7 +11,7 @@ import org.json.*;
 public class PostgresData {
 
     // Configuration constants
-    private static final String HOST = "192.168.1.60";
+    private static final String HOST = "localhost";
     private static final int PORT = 5432;
     private static final String USER = "postgres";
     private static final String PASSWORD = "";

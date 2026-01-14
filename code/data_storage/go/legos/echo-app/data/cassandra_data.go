@@ -44,7 +44,7 @@ func NewCassandraDataAccess() (*CassandraDataAccess, error) {
 	gocql.Logger = log.New(io.Discard, "", 0)
 
 	// Connect to Cassandra
-	cluster := gocql.NewCluster("192.168.1.60")
+	cluster := gocql.NewCluster("localhost")
 	cluster.Port = 9042
 	cluster.Keyspace = "system"
 	cluster.Consistency = gocql.Quorum

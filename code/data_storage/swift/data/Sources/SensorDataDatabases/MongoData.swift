@@ -10,7 +10,7 @@ class MongoDatabase: SensorDataDatabase {
 
     // Connect to MongoDB server and access the database and collection
     func connect() async throws {
-        let settings = try ConnectionSettings("mongodb://192.168.1.60:27017")
+        let settings = try ConnectionSettings("mongodb://localhost:27017")
         let connection = try await MongoConnection.connect(settings: settings)
         database = connection["sensor_data_db"]
         collection = database?["sensor_data"]

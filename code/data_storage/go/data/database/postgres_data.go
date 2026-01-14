@@ -29,7 +29,7 @@ type PostgresData struct {
 // NewPostgresData creates a new PostgresData instance and connects
 func NewPostgresData() (*PostgresData, error) {
 	// 1. Connect to default 'postgres' database to check/create target DB
-	db, err := sql.Open("pgx", "postgres://postgres:postgres@192.168.1.60:5432/postgres?sslmode=disable")
+	db, err := sql.Open("pgx", "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open default database: %w", err)
 	}
@@ -55,7 +55,7 @@ func NewPostgresData() (*PostgresData, error) {
 	db.Close()
 
 	// 2. Connect to the specific 'sensor_data_db'
-	targetDB, err := sql.Open("pgx", "postgres://postgres:postgres@192.168.1.60:5432/sensor_data_db?sslmode=disable")
+	targetDB, err := sql.Open("pgx", "postgres://postgres:postgres@localhost:5432/sensor_data_db?sslmode=disable")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open target database: %w", err)
 	}

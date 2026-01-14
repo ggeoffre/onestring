@@ -22,7 +22,7 @@
 #define WIFI_PASS "your_wifi_password"
 
 // API Configuration - UPDATE THIS
-#define API_URL "http://192.168.1.60:8080/log"
+#define API_URL "http://localhost:8080/log"
 
 // I2C Configuration for ESP32-S3-DevKitC-1
 #define I2C_MASTER_SCL_IO 9

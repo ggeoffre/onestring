@@ -15,7 +15,7 @@ public class MySQLDataAccess: SensorDataAccess {
     private func connect() async throws -> MySQLConnection {
         let eventLoopGroup = MultiThreadedEventLoopGroup.singleton
         let eventLoop = eventLoopGroup.next()
-        let address = try SocketAddress.makeAddressResolvingHost("192.168.1.60", port: 3306)
+        let address = try SocketAddress.makeAddressResolvingHost("localhost", port: 3306)
         let logger = Logger(label: "MySQLNIO_Connection")
         var tlsConfiguration = TLSConfiguration.makeClientConfiguration()
         tlsConfiguration.certificateVerification = .none

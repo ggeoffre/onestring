@@ -11,7 +11,7 @@ import org.json.*;
 public class MySQLData {
 
     // Configuration constants
-    private static final String HOST = "192.168.1.60";
+    private static final String HOST = "localhost";
     private static final int PORT = 3306;
     private static final String USER = "root";
     private static final String PASSWORD = "";

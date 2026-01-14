@@ -33,7 +33,7 @@ type MongoData struct {
 // NewMongoData creates a new MongoData instance and connects
 func NewMongoData() (*MongoData, error) {
 	// Connect to MongoDB
-	clientOpts := options.Client().ApplyURI("mongodb://192.168.1.60:27017/sensor_data")
+	clientOpts := options.Client().ApplyURI("mongodb://localhost:27017/sensor_data")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

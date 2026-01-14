@@ -12,7 +12,7 @@ import org.json.*;
 public class CassandraData {
 
     // Configuration constants
-    private static final String CONTACT_POINT = "192.168.1.60";
+    private static final String CONTACT_POINT = "localhost";
     private static final int PORT = 9042;
     private static final String LOCAL_DATACENTER = "datacenter1";
     private static final String KEYSPACE = "sensor_data_db";

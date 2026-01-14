@@ -14,7 +14,7 @@ class RedisDatabase: SensorDataDatabase {
     func connect() async throws {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
         let future = RedisConnection.make(
-            configuration: try RedisConnection.Configuration(hostname: "192.168.1.60", port: 6379),
+            configuration: try RedisConnection.Configuration(hostname: "localhost", port: 6379),
             boundEventLoop: group.next()
         )
         connection = try await future.get()

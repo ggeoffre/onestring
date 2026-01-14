@@ -21,7 +21,7 @@ type RedisData struct {
 func NewRedisData() *RedisData {
 	// Initialize Redis client
 	client := redis.NewClient(&redis.Options{
-		Addr:     "192.168.1.60:6379",
+		Addr:     "localhost:6379",
 		Password: "",
 		DB:       0,
 		MaintNotificationsConfig: &maintnotifications.Config{

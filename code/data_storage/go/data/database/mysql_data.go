@@ -29,7 +29,7 @@ type MySQLData struct {
 // NewMySQLData creates a new MySQLData instance and connects
 func NewMySQLData() (*MySQLData, error) {
 	// Initialize MySQL connection to default 'mysql' database
-	db, err := sql.Open("mysql", "root:@tcp(192.168.1.60:3306)/mysql?parseTime=true")
+	db, err := sql.Open("mysql", "root:@tcp(localhost:3306)/mysql?parseTime=true")
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}

@@ -13,7 +13,7 @@ public class CassandraDataAccess: SensorDataAccess {
     private func connect() async throws -> CassandraClient {
         let configuration = CassandraClient.Configuration(
             contactPointsProvider: { completion in
-                completion(.success(["192.168.1.60"]))
+                completion(.success(["localhost"]))
             },
             port: 9042,
             protocolVersion: .v4

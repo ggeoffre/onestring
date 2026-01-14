@@ -8,7 +8,7 @@ use crate::sensor_data_json_helper::{validate_sensor_json};
 
 /// Get a Redis async connection.
 async fn get_redis_connection() -> Result<redis::aio::MultiplexedConnection, String> {
-    let client = redis::Client::open("redis://192.168.1.60/")
+    let client = redis::Client::open("redis://localhost/")
         .map_err(|e| format!("Redis client error: {}", e))?;
     client.get_multiplexed_async_connection()
         .await

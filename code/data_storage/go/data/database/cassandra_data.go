@@ -28,7 +28,7 @@ type CassandraData struct {
 // NewCassandraData creates a new CassandraData instance and establishes connection
 func NewCassandraData() (*CassandraData, error) {
 	// Connect to Cassandra
-	cluster := gocql.NewCluster("192.168.1.60")
+	cluster := gocql.NewCluster("localhost")
 	cluster.Port = 9042
 	cluster.Keyspace = "system" // Connect to system to create keyspace
 	cluster.Consistency = gocql.Quorum

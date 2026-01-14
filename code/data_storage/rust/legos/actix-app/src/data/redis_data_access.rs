@@ -7,7 +7,7 @@ use std::error::Error;
 use tokio::task;
 use redis::AsyncCommands;
 
-const REDIS_URL: &str = "redis://192.168.1.60/";
+const REDIS_URL: &str = "redis://localhost/";
 const REDIS_LIST_KEY: &str = "sensor_data";
 
 async fn get_redis_connection() -> Result<redis::aio::MultiplexedConnection, Box<dyn Error + Send + Sync>> {
