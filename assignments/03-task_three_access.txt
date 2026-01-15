@@ -33,7 +33,7 @@ I. Start Your Development Environment (recommend using python):
       docker run --name python-container -p 8080:8080 -v ~/Workspace/projects/:/usr/src/python -d python:3.13.5 sleep infinity
 
   2. Launch VS Code, Open Folder, and Create a Terminal to:
-    A. Connect to the python container from teh VS Code Terminal
+    A. Connect to the python container from the VS Code Terminal
 
       docker exec -it -w /usr/src/python python-container /bin/bash
 

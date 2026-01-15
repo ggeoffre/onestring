@@ -37,7 +37,7 @@ I. Start Your Development Environment (recommend using python and mongo):
       docker run --name python-container -p 8080:8080 -v ~/Workspace/projects/:/usr/src/python -d python:3.13.5 sleep infinity
 
   2. Launch VS Code, Open Folder, and Create a Terminal to:
-    A. Connect to the python container from teh VS Code Terminal
+    A. Connect to the python container from the VS Code Terminal
 
       docker exec -it -w /usr/src/python python-container /bin/bash
 
@@ -101,6 +101,7 @@ EXTRA PROMPTS TO TRY:
 
   E. Modify the original code to pass-in/insert a randomized string into the mongo database each time the code is run
   F. Create a python function that will remove any key/value pair from a dictionary (like "id" or "_id")
+  G. Combine all of the above to create a small helper file that works with the OneString JSON data (generate sample data, validate required fields, and convert JSON to CSV). This helper should be simple utility code and can be called directly.
 
   Now run the generated code and these prompts back through AI as you did in IV and V previously.
 

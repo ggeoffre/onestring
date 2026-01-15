@@ -37,7 +37,7 @@ I. Start Your Development Environment (recommend using python, flask and mongo):
       docker run --name python-container -p 8080:8080 -v ~/Workspace/projects/:/usr/src/python -d python:3.13.5 sleep infinity
 
   2. Launch VS Code, Open Folder, and Create a Terminal to:
-    A. Connect to the python container from teh VS Code Terminal
+    A. Connect to the python container from the VS Code Terminal
 
       docker exec -it -w /usr/src/python python-container /bin/bash
 
@@ -48,17 +48,27 @@ I. Start Your Development Environment (recommend using python, flask and mongo):
     ./python/legos/flask-app/requirements.txt
 
 
-II. Modify the following prompts to be language and framework specific (recommend using python and flask):
+II. Before engaging your AI/LLM agent, perform the following tasks leveraging the work from previous tasks:
 
-  1. in the flask_mongo.py source file, create a seperate method named log_sensor_data that accepts a json string and saves the data to a mongo database
-  2. from the POST /log route method, call the log_sensor_data in the flask_mongo.py source file using the JSON data from the request
-  3. in the flask_mongo.py source file, create a seperate method named fetch_sensor_data that returns a csv string of all data stored in the mongo database
-  4. from the POST /report route method, call the fetch_sensor_data in the flask_mongo.py source file and return the CSV string as a downloadable file
-  5. in the flask_mongo.py source file, create a seperate method named purge_sensor_data that deletes all data in the mongo database
-  6. from either the POST or GET /purge route method, call the purge_sensor_data in the flask_mongo.py source file
+  1. copy the entire api solution from the previous exercise ./python/api/flask-app into ./python/legos
+  2. copy only the mongo_data_access.py, sensor_data_access_protocol.py from the previous exercise ./python/access into ./python/legos
+  3. copy only the sensor_data_helper.py from the previous exercise ./python/data into ./python/legos
+
+  NOTE: for #3 above, this code came from "EXTRA PROMPTS TO TRY:" lettter "G" in task 1 "DATA"
 
 
-III. Run your python Code
+III. Modify the following prompts to be language and framework specific (recommend using python and flask):
+
+  1. in each of the three functions of mongo_data_access.py (log_sensor_data, fetch_sensor_data, purge_sensor_data) create a connection to the mongo database, use the same/similar logic for connecting to a mongo database found in the mongo_data.py source file
+  2. in the mongo_data_access.py's log_sensor_data, take the "json_data: str" being passed in to the log_sensor_data() function to populate the params of the insert, use the same/similar logic for inserting sensor data into a mongo database found in the mongo_data.py source file
+  3. in the mongo_data_access.py's fetch_sensor_data, create a list[str] of JSON strings resulting from the select to a mongo collection as the return for fetch_sensor_data(), use the same/similar logic for selecting sensor data from a mongo database found in the mongo_data.py source file
+  4. in the mongo_data_access.py's purge_sensor_data, delete/truncate all data in the sensor data collection, use the same/similar logic for deleting/truncating sensor data from a mongo database found in the mongo_data.py source file
+  5. Reuse the OneString helper from earlier tasks for generating, validating, and formatting data. Treat it as a simple utility that can be called directly from the application code.
+
+  NOTE: it is important that mongo_data_access.py continues to strictly conform to the 'sensor_data_access_protocol' as it does now
+
+
+IV. Run your python Code
 
   python --version
   pip install --upgrade pip
@@ -67,7 +77,7 @@ III. Run your python Code
   python app.py
 
 
-IV. Once fully operational, copy each of the four functions individually, and add it to the following AI prompt...
+V. Once fully operational, copy each of the four functions individually, and add it to the following AI prompt...
 
   "Using the following source code, generate an AI prompt that would produce this code:"
 
@@ -78,7 +88,7 @@ IV. Once fully operational, copy each of the four functions individually, and ad
     NOTE: Cute/paste the code you generated above that sucessfully ran.
 
 
-V. Now take all of the original prompts from II above, and add it to the following AI prompt...
+VI. Now take all of the original prompts from II above, and add it to the following AI prompt...
 
   "How could each of these prompts be written in a manner to produce 'better' code:"
 
