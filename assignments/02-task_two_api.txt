@@ -30,7 +30,7 @@ I. Start Your Development Environment (recommend using python and flask):
   1. Launch Docker Desktop, and use the terminal within Docker Desktop to:
     A. Run a python docker container and attach to the mongo database container
 
-      docker run --name python-container -p 8080:8080 -v ~/Workspace/projects/:/usr/src/python -d python:3.13.5 sleep infinity
+      docker run --name python-container -p 8080:8080 -v [{REPLACE-WITH-PATH-TO-YOUR-LOCAL-CODE}]:/usr/src/python -d python:3.13.5 sleep infinity
 
   2. Launch VS Code, Open Folder, and Create a Terminal to:
     A. Connect to the python container from the VS Code Terminal
