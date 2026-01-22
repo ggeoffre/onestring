@@ -1,0 +1,3913 @@
+========================================
+PROJECT: gin-app
+PATH: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/legos/gin-app
+========================================
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/legos/gin-app/data/cassandra_data.go
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package data
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"log"
+	"strconv"
+	"time"
+
+	"github.com/gocql/gocql"
+)
+
+// SensorDataJSON is for unmarshaling JSON where recorded might be a string
+type SensorDataJSON struct {
+	Recorded    interface{} `json:"recorded"` // Accept both string and number
+	Location    string      `json:"location"`
+	Sensor      string      `json:"sensor"`
+	Measurement string      `json:"measurement"`
+	Units       string      `json:"units"`
+	Value       float64     `json:"value"`
+}
+
+type SensorDataCassandra struct {
+	Recorded    int64   `json:"recorded" cassandra:"recorded"`
+	Location    string  `json:"location" cassandra:"location"`
+	Sensor      string  `json:"sensor" cassandra:"sensor"`
+	Measurement string  `json:"measurement" cassandra:"measurement"`
+	Units       string  `json:"units" cassandra:"units"`
+	Value       float64 `json:"value" cassandra:"value"`
+}
+
+// CassandraDataAccess implements the SensorDataAccess interface for Cassandra
+type CassandraDataAccess struct {
+	Session *gocql.Session
+}
+
+// NewCassandraDataAccess creates a new CassandraDataAccess instance and establishes connection
+func NewCassandraDataAccess() (*CassandraDataAccess, error) {
+	// Suppress gocql internal logging to reduce noise
+	gocql.Logger = log.New(io.Discard, "", 0)
+
+	// Connect to Cassandra
+	cluster := gocql.NewCluster("localhost")
+	cluster.Port = 9042
+	cluster.Keyspace = "system"
+	cluster.Consistency = gocql.Quorum
+	cluster.DisableInitialHostLookup = true
+	cluster.ProtoVersion = 4
+	cluster.NumConns = 2
+	cluster.Timeout = 10 * time.Second
+	cluster.ConnectTimeout = 10 * time.Second
+
+	session, err := cluster.CreateSession()
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to Cassandra: %w", err)
+	}
+
+	fmt.Println("Connected to Cassandra")
+
+	query := `CREATE KEYSPACE IF NOT EXISTS sensor_data_db WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}`
+	if err := session.Query(query).Exec(); err != nil {
+		session.Close()
+		return nil, fmt.Errorf("failed to create keyspace: %w", err)
+	}
+	fmt.Println("Keyspace created or already exists")
+	session.Close()
+
+	cluster.Keyspace = "sensor_data_db"
+	session, err = cluster.CreateSession()
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to sensor_data_db keyspace: %w", err)
+	}
+
+	query = `CREATE TABLE IF NOT EXISTS sensor_data (
+		recorded bigint,
+		location text,
+		sensor text,
+		measurement text,
+		units text,
+		value double,
+		PRIMARY KEY (recorded, location, sensor, measurement)
+	)`
+	if err := session.Query(query).Exec(); err != nil {
+		session.Close()
+		return nil, fmt.Errorf("failed to create table: %w", err)
+	}
+	fmt.Println("Table created or already exists")
+
+	return &CassandraDataAccess{Session: session}, nil
+}
+
+func (c *CassandraDataAccess) Close() {
+	if c.Session != nil {
+		c.Session.Close()
+	}
+}
+
+// parseRecorded converts the recorded field to int64 whether it's a string or number
+func parseRecorded(recorded interface{}) (int64, error) {
+	switch v := recorded.(type) {
+	case float64:
+		return int64(v), nil
+	case string:
+		return strconv.ParseInt(v, 10, 64)
+	case int64:
+		return v, nil
+	case int:
+		return int64(v), nil
+	default:
+		return 0, fmt.Errorf("recorded field has unexpected type: %T", v)
+	}
+}
+
+func (c *CassandraDataAccess) LogSensorData(jsonData string) error {
+	var jsonStruct SensorDataJSON
+	if err := json.Unmarshal([]byte(jsonData), &jsonStruct); err != nil {
+		return fmt.Errorf("failed to unmarshal JSON string: %w", err)
+	}
+
+	recorded, err := parseRecorded(jsonStruct.Recorded)
+	if err != nil {
+		return fmt.Errorf("failed to parse recorded field: %w", err)
+	}
+
+	sensorData := SensorDataCassandra{
+		Recorded:    recorded,
+		Location:    jsonStruct.Location,
+		Sensor:      jsonStruct.Sensor,
+		Measurement: jsonStruct.Measurement,
+		Units:       jsonStruct.Units,
+		Value:       jsonStruct.Value,
+	}
+
+	query := "INSERT INTO sensor_data (recorded, location, sensor, measurement, units, value) VALUES (?, ?, ?, ?, ?, ?)"
+	if err := c.Session.Query(query,
+		sensorData.Recorded,
+		sensorData.Location,
+		sensorData.Sensor,
+		sensorData.Measurement,
+		sensorData.Units,
+		sensorData.Value,
+	).Exec(); err != nil {
+		return fmt.Errorf("failed to insert into sensor_data: %w", err)
+	}
+
+	return nil
+}
+
+func (c *CassandraDataAccess) FetchSensorData() ([]string, error) {
+	query := "SELECT recorded, location, sensor, measurement, units, value FROM sensor_data"
+	iter := c.Session.Query(query).Iter()
+	var recorded int64
+	var location, sensor, measurement, units string
+	var value float64
+	var results []string
+
+	for iter.Scan(&recorded, &location, &sensor, &measurement, &units, &value) {
+		sensorData := SensorDataCassandra{
+			Recorded:    recorded,
+			Location:    location,
+			Sensor:      sensor,
+			Measurement: measurement,
+			Units:       units,
+			Value:       value,
+		}
+		jsonBytes, err := json.Marshal(sensorData)
+		if err != nil {
+			fmt.Printf("failed to marshal SensorDataCassandra to JSON: %v\n", err)
+			continue
+		}
+		results = append(results, string(jsonBytes))
+	}
+
+	if err := iter.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close iterator: %w", err)
+	}
+
+	return results, nil
+}
+
+func (c *CassandraDataAccess) PurgeSensorData() error {
+	query := "TRUNCATE sensor_data"
+	if err := c.Session.Query(query).Exec(); err != nil {
+		return fmt.Errorf("failed to truncate sensor_data table: %w", err)
+	}
+	return nil
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/legos/gin-app/data/mongo_data.go
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package data
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log"
+	"strconv"
+	"time"
+
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+)
+
+// SensorDataJSON is for unmarshaling JSON where recorded might be a string
+type SensorDataMongoJSON struct {
+	Recorded    interface{} `json:"recorded"` // Accept both string and number
+	Location    string      `json:"location"`
+	Sensor      string      `json:"sensor"`
+	Measurement string      `json:"measurement"`
+	Units       string      `json:"units"`
+	Value       float64     `json:"value"`
+}
+
+type SensorDataMongo struct {
+	Recorded    int64   `json:"recorded" bson:"recorded"`
+	Location    string  `json:"location" bson:"location"`
+	Sensor      string  `json:"sensor" bson:"sensor"`
+	Measurement string  `json:"measurement" bson:"measurement"`
+	Units       string  `json:"units" bson:"units"`
+	Value       float64 `json:"value" bson:"value"`
+}
+
+// MongoDataAccess implements the SensorDataAccess interface for MongoDB
+type MongoDataAccess struct {
+	Client     *mongo.Client
+	Collection *mongo.Collection
+}
+
+// NewMongoDataAccess creates a new MongoDataAccess instance and connects
+func NewMongoDataAccess() (*MongoDataAccess, error) {
+	// Suppress mongo driver logging
+	log.SetOutput(io.Discard)
+	defer log.SetOutput(log.Writer())
+
+	// Connect to MongoDB
+	clientOpts := options.Client().ApplyURI("mongodb://localhost:27017")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	client, err := mongo.Connect(ctx, clientOpts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to MongoDB: %w", err)
+	}
+
+	// Ping the database to verify connection
+	if err := client.Ping(ctx, nil); err != nil {
+		return nil, fmt.Errorf("failed to ping MongoDB: %w", err)
+	}
+
+	fmt.Println("Connected to MongoDB")
+
+	// Get collection reference
+	collection := client.Database("sensor_data_db").Collection("sensor_data")
+
+	return &MongoDataAccess{
+		Client:     client,
+		Collection: collection,
+	}, nil
+}
+
+// Close disconnects the client
+func (m *MongoDataAccess) Close() {
+	if m.Client != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		m.Client.Disconnect(ctx)
+	}
+}
+
+// parseRecorded converts the recorded field to int64 whether it's a string or number
+func parseRecordedMongo(recorded interface{}) (int64, error) {
+	switch v := recorded.(type) {
+	case float64:
+		return int64(v), nil
+	case string:
+		return strconv.ParseInt(v, 10, 64)
+	case int64:
+		return v, nil
+	case int:
+		return int64(v), nil
+	case int32:
+		return int64(v), nil
+	default:
+		return 0, fmt.Errorf("recorded field has unexpected type: %T", v)
+	}
+}
+
+func (m *MongoDataAccess) LogSensorData(jsonData string) error {
+	var jsonStruct SensorDataMongoJSON
+	if err := json.Unmarshal([]byte(jsonData), &jsonStruct); err != nil {
+		return fmt.Errorf("failed to unmarshal JSON string: %w", err)
+	}
+
+	recorded, err := parseRecordedMongo(jsonStruct.Recorded)
+	if err != nil {
+		return fmt.Errorf("failed to parse recorded field: %w", err)
+	}
+
+	sensorData := SensorDataMongo{
+		Recorded:    recorded,
+		Location:    jsonStruct.Location,
+		Sensor:      jsonStruct.Sensor,
+		Measurement: jsonStruct.Measurement,
+		Units:       jsonStruct.Units,
+		Value:       jsonStruct.Value,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err = m.Collection.InsertOne(ctx, sensorData)
+	if err != nil {
+		return fmt.Errorf("failed to insert into MongoDB: %w", err)
+	}
+
+	return nil
+}
+
+func (m *MongoDataAccess) FetchSensorData() ([]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cursor, err := m.Collection.Find(ctx, bson.M{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve data from MongoDB: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var results []string
+	for cursor.Next(ctx) {
+		var sensorData SensorDataMongo
+		if err := cursor.Decode(&sensorData); err != nil {
+			fmt.Printf("failed to decode document: %v\n", err)
+			continue
+		}
+
+		jsonBytes, err := json.Marshal(sensorData)
+		if err != nil {
+			fmt.Printf("failed to marshal SensorDataMongo to JSON: %v\n", err)
+			continue
+		}
+		results = append(results, string(jsonBytes))
+	}
+
+	if err := cursor.Err(); err != nil {
+		return nil, fmt.Errorf("cursor error: %w", err)
+	}
+
+	return results, nil
+}
+
+func (m *MongoDataAccess) PurgeSensorData() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err := m.Collection.DeleteMany(ctx, bson.M{})
+	if err != nil {
+		return fmt.Errorf("failed to delete documents from MongoDB: %w", err)
+	}
+
+	return nil
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/legos/gin-app/data/mysql_data.go
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package data
+
+import (
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"strconv"
+
+	_ "github.com/go-sql-driver/mysql"
+)
+
+// SensorDataMySQLJSON is for unmarshaling JSON where recorded might be a string
+type SensorDataMySQLJSON struct {
+	Recorded    interface{} `json:"recorded"` // Accept both string and number
+	Location    string      `json:"location"`
+	Sensor      string      `json:"sensor"`
+	Measurement string      `json:"measurement"`
+	Units       string      `json:"units"`
+	Value       float64     `json:"value"`
+}
+
+type SensorDataMySQL struct {
+	Recorded    int64   `json:"recorded" mysql:"recorded"`
+	Location    string  `json:"location" mysql:"location"`
+	Sensor      string  `json:"sensor" mysql:"sensor"`
+	Measurement string  `json:"measurement" mysql:"measurement"`
+	Units       string  `json:"units" mysql:"units"`
+	Value       float64 `json:"value" mysql:"value"`
+}
+
+// MySQLDataAccess implements the SensorDataAccess interface for MySQL
+type MySQLDataAccess struct {
+	DB *sql.DB
+}
+
+// NewMySQLDataAccess creates a new MySQLDataAccess instance and connects
+func NewMySQLDataAccess() (*MySQLDataAccess, error) {
+	// Initialize MySQL connection to default 'mysql' database
+	db, err := sql.Open("mysql", "root:@tcp(localhost:3306)/mysql?parseTime=true")
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
+	}
+
+	// Create database if it doesn't exist
+	databaseName := "sensor_data_db"
+	query := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", databaseName)
+	if _, err := db.Exec(query); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to create database: %w", err)
+	}
+
+	// Use the created database
+	if _, err := db.Exec("USE sensor_data_db"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to select database: %w", err)
+	}
+
+	fmt.Println("Connected to MySQL and selected DB")
+
+	// Create table if it doesn't exist
+	tableQuery := `CREATE TABLE IF NOT EXISTS sensor_data (
+		recorded BIGINT,
+		location VARCHAR(255),
+		sensor VARCHAR(255),
+		measurement VARCHAR(255),
+		units VARCHAR(255),
+		value DECIMAL(10, 2)
+	)`
+	if _, err := db.Exec(tableQuery); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to create table: %w", err)
+	}
+
+	fmt.Println("Table created or already exists")
+
+	return &MySQLDataAccess{DB: db}, nil
+}
+
+// Close closes the database connection
+func (m *MySQLDataAccess) Close() {
+	if m.DB != nil {
+		m.DB.Close()
+	}
+}
+
+// parseRecorded converts the recorded field to int64 whether it's a string or number
+func parseRecordedMySQL(recorded interface{}) (int64, error) {
+	switch v := recorded.(type) {
+	case float64:
+		return int64(v), nil
+	case string:
+		return strconv.ParseInt(v, 10, 64)
+	case int64:
+		return v, nil
+	case int:
+		return int64(v), nil
+	default:
+		return 0, fmt.Errorf("recorded field has unexpected type: %T", v)
+	}
+}
+
+func (m *MySQLDataAccess) LogSensorData(jsonData string) error {
+	var jsonStruct SensorDataMySQLJSON
+	if err := json.Unmarshal([]byte(jsonData), &jsonStruct); err != nil {
+		return fmt.Errorf("failed to unmarshal JSON string: %w", err)
+	}
+
+	recorded, err := parseRecordedMySQL(jsonStruct.Recorded)
+	if err != nil {
+		return fmt.Errorf("failed to parse recorded field: %w", err)
+	}
+
+	sensorData := SensorDataMySQL{
+		Recorded:    recorded,
+		Location:    jsonStruct.Location,
+		Sensor:      jsonStruct.Sensor,
+		Measurement: jsonStruct.Measurement,
+		Units:       jsonStruct.Units,
+		Value:       jsonStruct.Value,
+	}
+
+	query := `INSERT INTO sensor_data (recorded, location, sensor, measurement, units, value)
+		VALUES (?, ?, ?, ?, ?, ?)`
+
+	_, err = m.DB.Exec(query,
+		sensorData.Recorded,
+		sensorData.Location,
+		sensorData.Sensor,
+		sensorData.Measurement,
+		sensorData.Units,
+		sensorData.Value)
+	if err != nil {
+		return fmt.Errorf("failed to insert into MySQL: %w", err)
+	}
+
+	return nil
+}
+
+func (m *MySQLDataAccess) FetchSensorData() ([]string, error) {
+	rows, err := m.DB.Query(`SELECT recorded, location, sensor, measurement, units, value FROM sensor_data`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query data from MySQL: %w", err)
+	}
+	defer rows.Close()
+
+	var results []string
+	for rows.Next() {
+		var sensorData SensorDataMySQL
+		err := rows.Scan(
+			&sensorData.Recorded,
+			&sensorData.Location,
+			&sensorData.Sensor,
+			&sensorData.Measurement,
+			&sensorData.Units,
+			&sensorData.Value,
+		)
+		if err != nil {
+			fmt.Printf("failed to scan row: %v\n", err)
+			continue
+		}
+
+		jsonBytes, err := json.Marshal(sensorData)
+		if err != nil {
+			fmt.Printf("failed to marshal SensorDataMySQL to JSON: %v\n", err)
+			continue
+		}
+		results = append(results, string(jsonBytes))
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("row iteration error: %w", err)
+	}
+
+	return results, nil
+}
+
+func (m *MySQLDataAccess) PurgeSensorData() error {
+	_, err := m.DB.Exec("DELETE FROM sensor_data")
+	if err != nil {
+		return fmt.Errorf("failed to delete data from MySQL: %w", err)
+	}
+
+	return nil
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/legos/gin-app/data/postgres_data.go
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package data
+
+import (
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"strconv"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
+)
+
+// SensorDataPostgresJSON is for unmarshaling JSON where recorded might be a string
+type SensorDataPostgresJSON struct {
+	Recorded    interface{} `json:"recorded"` // Accept both string and number
+	Location    string      `json:"location"`
+	Sensor      string      `json:"sensor"`
+	Measurement string      `json:"measurement"`
+	Units       string      `json:"units"`
+	Value       float64     `json:"value"`
+}
+
+type SensorDataPostgres struct {
+	Recorded    int64   `json:"recorded" postgres:"recorded"`
+	Location    string  `json:"location" postgres:"location"`
+	Sensor      string  `json:"sensor" postgres:"sensor"`
+	Measurement string  `json:"measurement" postgres:"measurement"`
+	Units       string  `json:"units" postgres:"units"`
+	Value       float64 `json:"value" postgres:"value"`
+}
+
+// PostgresDataAccess implements the SensorDataAccess interface for PostgreSQL
+type PostgresDataAccess struct {
+	DB *sql.DB
+}
+
+// NewPostgresDataAccess creates a new PostgresDataAccess instance and connects
+func NewPostgresDataAccess() (*PostgresDataAccess, error) {
+	// Connect to default 'postgres' database to check/create target DB
+	db, err := sql.Open("pgx", "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable")
+	if err != nil {
+		return nil, fmt.Errorf("failed to open default database: %w", err)
+	}
+
+	// Create database if it doesn't exist
+	databaseName := "sensor_data_db"
+	query := fmt.Sprintf("SELECT 1 FROM pg_database WHERE datname = '%s'", databaseName)
+	var exists int
+
+	err = db.QueryRow(query).Scan(&exists)
+	if err != nil && err != sql.ErrNoRows {
+		db.Close()
+		return nil, fmt.Errorf("failed to check for database existence: %w", err)
+	}
+
+	if exists == 0 {
+		_, err = db.Exec(`CREATE DATABASE sensor_data_db`)
+		if err != nil {
+			db.Close()
+			return nil, fmt.Errorf("failed to create database: %w", err)
+		}
+		fmt.Println("Database created")
+	}
+	db.Close()
+
+	// Connect to the specific 'sensor_data_db'
+	targetDB, err := sql.Open("pgx", "postgres://postgres:postgres@localhost:5432/sensor_data_db?sslmode=disable")
+	if err != nil {
+		return nil, fmt.Errorf("failed to open target database: %w", err)
+	}
+
+	fmt.Println("Connected to PostgreSQL")
+
+	// Create table if it doesn't exist
+	tableQuery := `CREATE TABLE IF NOT EXISTS sensor_data (
+		recorded BIGINT NOT NULL,
+		location VARCHAR(255) NOT NULL,
+		sensor VARCHAR(255) NOT NULL,
+		measurement VARCHAR(255) NOT NULL,
+		units VARCHAR(255) NOT NULL,
+		value NUMERIC(10, 2) NOT NULL
+	)`
+	if _, err := targetDB.Exec(tableQuery); err != nil {
+		targetDB.Close()
+		return nil, fmt.Errorf("failed to create table: %w", err)
+	}
+
+	fmt.Println("Table created or already exists")
+
+	return &PostgresDataAccess{DB: targetDB}, nil
+}
+
+// Close closes the database connection
+func (p *PostgresDataAccess) Close() {
+	if p.DB != nil {
+		p.DB.Close()
+	}
+}
+
+// parseRecorded converts the recorded field to int64 whether it's a string or number
+func parseRecordedPostgres(recorded interface{}) (int64, error) {
+	switch v := recorded.(type) {
+	case float64:
+		return int64(v), nil
+	case string:
+		return strconv.ParseInt(v, 10, 64)
+	case int64:
+		return v, nil
+	case int:
+		return int64(v), nil
+	default:
+		return 0, fmt.Errorf("recorded field has unexpected type: %T", v)
+	}
+}
+
+func (p *PostgresDataAccess) LogSensorData(jsonData string) error {
+	var jsonStruct SensorDataPostgresJSON
+	if err := json.Unmarshal([]byte(jsonData), &jsonStruct); err != nil {
+		return fmt.Errorf("failed to unmarshal JSON string: %w", err)
+	}
+
+	recorded, err := parseRecordedPostgres(jsonStruct.Recorded)
+	if err != nil {
+		return fmt.Errorf("failed to parse recorded field: %w", err)
+	}
+
+	sensorData := SensorDataPostgres{
+		Recorded:    recorded,
+		Location:    jsonStruct.Location,
+		Sensor:      jsonStruct.Sensor,
+		Measurement: jsonStruct.Measurement,
+		Units:       jsonStruct.Units,
+		Value:       jsonStruct.Value,
+	}
+
+	query := `INSERT INTO sensor_data (recorded, location, sensor, measurement, units, value)
+		VALUES ($1, $2, $3, $4, $5, $6)`
+
+	_, err = p.DB.Exec(query,
+		sensorData.Recorded,
+		sensorData.Location,
+		sensorData.Sensor,
+		sensorData.Measurement,
+		sensorData.Units,
+		sensorData.Value)
+	if err != nil {
+		return fmt.Errorf("failed to insert into PostgreSQL: %w", err)
+	}
+
+	return nil
+}
+
+func (p *PostgresDataAccess) FetchSensorData() ([]string, error) {
+	rows, err := p.DB.Query(`SELECT recorded, location, sensor, measurement, units, value FROM sensor_data`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query data from PostgreSQL: %w", err)
+	}
+	defer rows.Close()
+
+	var results []string
+	for rows.Next() {
+		var sensorData SensorDataPostgres
+		err := rows.Scan(
+			&sensorData.Recorded,
+			&sensorData.Location,
+			&sensorData.Sensor,
+			&sensorData.Measurement,
+			&sensorData.Units,
+			&sensorData.Value,
+		)
+		if err != nil {
+			fmt.Printf("failed to scan row: %v\n", err)
+			continue
+		}
+
+		jsonBytes, err := json.Marshal(sensorData)
+		if err != nil {
+			fmt.Printf("failed to marshal SensorDataPostgres to JSON: %v\n", err)
+			continue
+		}
+		results = append(results, string(jsonBytes))
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("row iteration error: %w", err)
+	}
+
+	return results, nil
+}
+
+func (p *PostgresDataAccess) PurgeSensorData() error {
+	_, err := p.DB.Exec("DELETE FROM sensor_data")
+	if err != nil {
+		return fmt.Errorf("failed to delete data from PostgreSQL: %w", err)
+	}
+
+	return nil
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/legos/gin-app/data/redis_data.go
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package data
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strconv"
+
+	"github.com/redis/go-redis/v9"
+	"github.com/redis/go-redis/v9/maintnotifications"
+)
+
+// SensorDataRedisJSON is for unmarshaling JSON where recorded might be a string
+type SensorDataRedisJSON struct {
+	Recorded    interface{} `json:"recorded"` // Accept both string and number
+	Location    string      `json:"location"`
+	Sensor      string      `json:"sensor"`
+	Measurement string      `json:"measurement"`
+	Units       string      `json:"units"`
+	Value       float64     `json:"value"`
+}
+
+type SensorDataRedis struct {
+	Recorded    int64   `json:"recorded"`
+	Location    string  `json:"location"`
+	Sensor      string  `json:"sensor"`
+	Measurement string  `json:"measurement"`
+	Units       string  `json:"units"`
+	Value       float64 `json:"value"`
+}
+
+// RedisDataAccess implements the SensorDataAccess interface for Redis
+type RedisDataAccess struct {
+	Client *redis.Client
+	Key    string
+}
+
+// NewRedisDataAccess creates a new RedisDataAccess instance
+func NewRedisDataAccess() (*RedisDataAccess, error) {
+	// Initialize Redis client
+	client := redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "",
+		DB:       0,
+		MaintNotificationsConfig: &maintnotifications.Config{
+			Mode: maintnotifications.ModeDisabled,
+		},
+	})
+
+	// Test connection
+	ctx := context.Background()
+	if err := client.Ping(ctx).Err(); err != nil {
+		return nil, fmt.Errorf("failed to connect to Redis: %w", err)
+	}
+
+	fmt.Println("Connected to Redis")
+
+	return &RedisDataAccess{
+		Client: client,
+		Key:    "sensor_data:readings",
+	}, nil
+}
+
+// Close closes the Redis client
+func (r *RedisDataAccess) Close() {
+	if r.Client != nil {
+		r.Client.Close()
+	}
+}
+
+// parseRecorded converts the recorded field to int64 whether it's a string or number
+func parseRecordedRedis(recorded interface{}) (int64, error) {
+	switch v := recorded.(type) {
+	case float64:
+		return int64(v), nil
+	case string:
+		return strconv.ParseInt(v, 10, 64)
+	case int64:
+		return v, nil
+	case int:
+		return int64(v), nil
+	default:
+		return 0, fmt.Errorf("recorded field has unexpected type: %T", v)
+	}
+}
+
+func (r *RedisDataAccess) LogSensorData(jsonData string) error {
+	var jsonStruct SensorDataRedisJSON
+	if err := json.Unmarshal([]byte(jsonData), &jsonStruct); err != nil {
+		return fmt.Errorf("failed to unmarshal JSON string: %w", err)
+	}
+
+	recorded, err := parseRecordedRedis(jsonStruct.Recorded)
+	if err != nil {
+		return fmt.Errorf("failed to parse recorded field: %w", err)
+	}
+
+	sensorData := SensorDataRedis{
+		Recorded:    recorded,
+		Location:    jsonStruct.Location,
+		Sensor:      jsonStruct.Sensor,
+		Measurement: jsonStruct.Measurement,
+		Units:       jsonStruct.Units,
+		Value:       jsonStruct.Value,
+	}
+
+	// Marshal back to JSON for storage
+	jsonBytes, err := json.Marshal(sensorData)
+	if err != nil {
+		return fmt.Errorf("failed to marshal sensor data: %w", err)
+	}
+
+	ctx := context.Background()
+	if err := r.Client.RPush(ctx, r.Key, string(jsonBytes)).Err(); err != nil {
+		return fmt.Errorf("failed to insert into Redis: %w", err)
+	}
+
+	return nil
+}
+
+func (r *RedisDataAccess) FetchSensorData() ([]string, error) {
+	ctx := context.Background()
+
+	values, err := r.Client.LRange(ctx, r.Key, 0, -1).Result()
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch data from Redis: %w", err)
+	}
+
+	return values, nil
+}
+
+func (r *RedisDataAccess) PurgeSensorData() error {
+	ctx := context.Background()
+
+	if err := r.Client.Del(ctx, r.Key).Err(); err != nil {
+		return fmt.Errorf("failed to delete data from Redis: %w", err)
+	}
+
+	return nil
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/legos/gin-app/data/sensor_data_access.go
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package data
+
+import "fmt"
+
+// SensorDataAccess defines the interface for data access operations
+type SensorDataAccess interface {
+    LogSensorData(jsonData string) error
+    FetchSensorData() ([]string, error)
+    PurgeSensorData() error
+}
+
+// Helper function to handle unsupported data access types
+func UnsupportedDataAccess(dataAccessType string) {
+    panic(fmt.Sprintf("Unsupported DATA_ACCESS type: %s", dataAccessType))
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/legos/gin-app/data/sensor_data_helper.go
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package data
+
+import (
+	"sort"
+	"strings"
+	"encoding/json"
+	"fmt"
+	"math"
+	"math/rand"
+	"time"
+)
+
+// JSON String Literal
+const SENSOR_DATA_JSON_STRING = `{
+	"recorded": 1768237200,
+	"location": "den",
+	"sensor": "bmp280",
+	"measurement": "temperature",
+	"units": "C",
+	"value": 22.3
+}`
+
+// JSON Object Helper Function
+func GetSensorDataJsonObject() map[string]interface{} {
+	var data map[string]interface{}
+	err := json.Unmarshal([]byte(SENSOR_DATA_JSON_STRING), &data)
+	if err != nil {
+		fmt.Printf("Error unmarshalling SENSOR_DATA_JSON_STRING: %v\n", err)
+		return nil
+	}
+	return data
+}
+
+// JSON Array Helper Function
+func GetSensorDataJsonArray() []interface{} {
+	jsonArrayString := "[" + SENSOR_DATA_JSON_STRING + "]"
+	var data []interface{}
+	err := json.Unmarshal([]byte(jsonArrayString), &data)
+	if err != nil {
+		fmt.Printf("Error unmarshalling JSON array string: %v\n", err)
+		return nil
+	}
+	return data
+}
+
+// Create a new map to hold the sensor data with random values for keys recorded and value
+func GetRandomSensorDataJsonString() []byte {
+	// Create a new map to hold the sensor data
+	var sensorData = GetSensorDataJsonObject()
+
+	// Generate a random seed to use for generating random values
+	// Note: rand.Seed is deprecated in newer Go versions (1.20+) as global random is seeded automatically,
+	// but kept here for compatibility with older environments if needed.
+	rand.Seed(time.Now().UnixNano())
+	sensorData["recorded"] = time.Now().Unix()
+	var value float64 = 22.4 + rand.Float64()*(32.1-22.4)
+	value = math.Round(value*float64(math.Pow10(1))) / float64(math.Pow10(1))
+	sensorData["value"] = value
+
+	// Convert the map to a byte slice using json.Marshal
+	b, _ := json.Marshal(sensorData)
+
+	return b
+}
+
+// RemoveKeyValuePair removes a key-value pair from a map
+func RemoveKeyValuePair(mapVar map[string]string, keyToRemove string) {
+	if _, ok := mapVar[keyToRemove]; ok {
+		delete(mapVar, keyToRemove)
+	}
+}
+
+// JsonToCSV converts a JSON array string to CSV format
+// Input: []string where each string is a JSON object from FetchSensorData
+// Output: CSV string with headers and rows
+func JsonToCSV(jsonArray []string) (string, error) {
+	if len(jsonArray) == 0 {
+		return "", nil
+	}
+
+	// Parse all JSON objects to get their fields
+	var records []map[string]interface{}
+	var allKeys map[string]bool = make(map[string]bool)
+
+	for _, jsonStr := range jsonArray {
+		var record map[string]interface{}
+		if err := json.Unmarshal([]byte(jsonStr), &record); err != nil {
+			return "", fmt.Errorf("failed to parse JSON: %w", err)
+		}
+		records = append(records, record)
+
+		// Collect all unique keys
+		for key := range record {
+			allKeys[key] = true
+		}
+	}
+
+	// Sort keys for consistent column order
+	var keys []string
+	for key := range allKeys {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	// Build CSV
+	var csvBuilder strings.Builder
+
+	// Write header row
+	csvBuilder.WriteString(strings.Join(keys, ","))
+	csvBuilder.WriteString("\n")
+
+	// Write data rows
+	for _, record := range records {
+		var values []string
+		for _, key := range keys {
+			value := record[key]
+
+			// Special handling for numeric values to avoid scientific notation
+			if floatVal, ok := value.(float64); ok {
+				// Check if it's actually an integer (no decimal part)
+				if floatVal == float64(int64(floatVal)) {
+					values = append(values, fmt.Sprintf("%d", int64(floatVal)))
+				} else {
+					values = append(values, fmt.Sprintf("%v", value))
+				}
+			} else {
+				values = append(values, fmt.Sprintf("%v", value))
+			}
+		}
+		csvBuilder.WriteString(strings.Join(values, ","))
+		csvBuilder.WriteString("\n")
+	}
+
+	return csvBuilder.String(), nil
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/legos/gin-app/main.go
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package main
+
+import (
+	"os"
+	"net/http"
+	"encoding/json"
+	"log"
+
+	"github.com/gin-gonic/gin"
+	"gin-app/data"
+)
+
+// Global data access instance - created once, reused for all requests
+var dataAccess data.SensorDataAccess
+
+func initDataAccess() error {
+	dataAccessType := os.Getenv("DATA_ACCESS")
+	if dataAccessType == "" {
+		dataAccessType = "redis"
+	}
+
+	var err error
+	switch dataAccessType {
+	case "cassandra":
+		dataAccess, err = data.NewCassandraDataAccess()
+	case "mongo":
+		dataAccess, err = data.NewMongoDataAccess()
+	case "mysql":
+		dataAccess, err = data.NewMySQLDataAccess()
+	case "postgres":
+		dataAccess, err = data.NewPostgresDataAccess()
+	case "redis":
+		dataAccess, err = data.NewRedisDataAccess()
+	default:
+		data.UnsupportedDataAccess(dataAccessType)
+		return nil
+	}
+
+	if err != nil {
+		return err
+	}
+
+	log.Printf("Data access initialized: %s", dataAccessType)
+	return nil
+}
+
+func main() {
+	// Initialize database connection once at startup
+	if err := initDataAccess(); err != nil {
+		log.Fatalf("Failed to initialize data access: %v", err)
+	}
+
+	// Clean up connection on exit
+	if closer, ok := dataAccess.(interface{ Close() }); ok {
+		defer closer.Close()
+	}
+
+	// Create a new Gin router
+	r := gin.Default()
+
+	r.GET("/", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"message": "Gin API Server is running!",
+		})
+	})
+
+	r.POST("/echo", func(c *gin.Context) {
+		var requestBody map[string]interface{}
+		if err := c.ShouldBindJSON(&requestBody); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+			return
+		}
+		c.JSON(http.StatusOK, requestBody)
+	})
+
+	r.POST("/log", func(c *gin.Context) {
+		var requestBody map[string]interface{}
+		if err := c.ShouldBindJSON(&requestBody); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+			return
+		}
+
+		// Marshal to JSON string
+		bytes, err := json.Marshal(requestBody)
+		if err != nil {
+			log.Printf("Failed to marshal request body: %v", err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+			return
+		}
+
+		// Log to database using the global connection
+		if err := dataAccess.LogSensorData(string(bytes)); err != nil {
+			log.Printf("Failed to log sensor data: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to log sensor data"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Data logged successfully"})
+	})
+
+	r.GET("/report", func(c *gin.Context) {
+		// Fetch data using the global connection
+		sensorData, err := dataAccess.FetchSensorData()
+		if err != nil {
+			log.Printf("Failed to fetch sensor data: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch sensor data"})
+			return
+		}
+
+		// Convert JSON array to CSV
+		csvData, err := data.JsonToCSV(sensorData)
+		if err != nil {
+			log.Printf("Failed to convert to CSV: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate CSV"})
+			return
+		}
+
+		c.Header("Content-Type", "text/csv")
+		c.Header("Content-Disposition", `attachment; filename="report.csv"`)
+		c.String(http.StatusOK, csvData)
+	})
+
+	r.Any("/purge", func(c *gin.Context) {
+		// Purge using the global connection
+		if err := dataAccess.PurgeSensorData(); err != nil {
+			log.Printf("Failed to purge sensor data: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to purge sensor data"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Purge executed successfully"})
+	})
+
+	log.Println("Starting server on :8080")
+	r.Run(":8080")
+}
+
+
+
+========================================
+PROJECT: echo-app
+PATH: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/legos/echo-app
+========================================
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/legos/echo-app/data/cassandra_data.go
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package data
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"log"
+	"strconv"
+	"time"
+
+	"github.com/gocql/gocql"
+)
+
+// SensorDataJSON is for unmarshaling JSON where recorded might be a string
+type SensorDataJSON struct {
+	Recorded    interface{} `json:"recorded"` // Accept both string and number
+	Location    string      `json:"location"`
+	Sensor      string      `json:"sensor"`
+	Measurement string      `json:"measurement"`
+	Units       string      `json:"units"`
+	Value       float64     `json:"value"`
+}
+
+type SensorDataCassandra struct {
+	Recorded    int64   `json:"recorded" cassandra:"recorded"`
+	Location    string  `json:"location" cassandra:"location"`
+	Sensor      string  `json:"sensor" cassandra:"sensor"`
+	Measurement string  `json:"measurement" cassandra:"measurement"`
+	Units       string  `json:"units" cassandra:"units"`
+	Value       float64 `json:"value" cassandra:"value"`
+}
+
+// CassandraDataAccess implements the SensorDataAccess interface for Cassandra
+type CassandraDataAccess struct {
+	Session *gocql.Session
+}
+
+// NewCassandraDataAccess creates a new CassandraDataAccess instance and establishes connection
+func NewCassandraDataAccess() (*CassandraDataAccess, error) {
+	// Suppress gocql internal logging to reduce noise
+	gocql.Logger = log.New(io.Discard, "", 0)
+
+	// Connect to Cassandra
+	cluster := gocql.NewCluster("localhost")
+	cluster.Port = 9042
+	cluster.Keyspace = "system"
+	cluster.Consistency = gocql.Quorum
+	cluster.DisableInitialHostLookup = true
+	cluster.ProtoVersion = 4
+	cluster.NumConns = 2
+	cluster.Timeout = 10 * time.Second
+	cluster.ConnectTimeout = 10 * time.Second
+
+	session, err := cluster.CreateSession()
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to Cassandra: %w", err)
+	}
+
+	fmt.Println("Connected to Cassandra")
+
+	query := `CREATE KEYSPACE IF NOT EXISTS sensor_data_db WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}`
+	if err := session.Query(query).Exec(); err != nil {
+		session.Close()
+		return nil, fmt.Errorf("failed to create keyspace: %w", err)
+	}
+	fmt.Println("Keyspace created or already exists")
+	session.Close()
+
+	cluster.Keyspace = "sensor_data_db"
+	session, err = cluster.CreateSession()
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to sensor_data_db keyspace: %w", err)
+	}
+
+	query = `CREATE TABLE IF NOT EXISTS sensor_data (
+		recorded bigint,
+		location text,
+		sensor text,
+		measurement text,
+		units text,
+		value double,
+		PRIMARY KEY (recorded, location, sensor, measurement)
+	)`
+	if err := session.Query(query).Exec(); err != nil {
+		session.Close()
+		return nil, fmt.Errorf("failed to create table: %w", err)
+	}
+	fmt.Println("Table created or already exists")
+
+	return &CassandraDataAccess{Session: session}, nil
+}
+
+func (c *CassandraDataAccess) Close() {
+	if c.Session != nil {
+		c.Session.Close()
+	}
+}
+
+// parseRecorded converts the recorded field to int64 whether it's a string or number
+func parseRecorded(recorded interface{}) (int64, error) {
+	switch v := recorded.(type) {
+	case float64:
+		return int64(v), nil
+	case string:
+		return strconv.ParseInt(v, 10, 64)
+	case int64:
+		return v, nil
+	case int:
+		return int64(v), nil
+	default:
+		return 0, fmt.Errorf("recorded field has unexpected type: %T", v)
+	}
+}
+
+func (c *CassandraDataAccess) LogSensorData(jsonData string) error {
+	var jsonStruct SensorDataJSON
+	if err := json.Unmarshal([]byte(jsonData), &jsonStruct); err != nil {
+		return fmt.Errorf("failed to unmarshal JSON string: %w", err)
+	}
+
+	recorded, err := parseRecorded(jsonStruct.Recorded)
+	if err != nil {
+		return fmt.Errorf("failed to parse recorded field: %w", err)
+	}
+
+	sensorData := SensorDataCassandra{
+		Recorded:    recorded,
+		Location:    jsonStruct.Location,
+		Sensor:      jsonStruct.Sensor,
+		Measurement: jsonStruct.Measurement,
+		Units:       jsonStruct.Units,
+		Value:       jsonStruct.Value,
+	}
+
+	query := "INSERT INTO sensor_data (recorded, location, sensor, measurement, units, value) VALUES (?, ?, ?, ?, ?, ?)"
+	if err := c.Session.Query(query,
+		sensorData.Recorded,
+		sensorData.Location,
+		sensorData.Sensor,
+		sensorData.Measurement,
+		sensorData.Units,
+		sensorData.Value,
+	).Exec(); err != nil {
+		return fmt.Errorf("failed to insert into sensor_data: %w", err)
+	}
+
+	return nil
+}
+
+func (c *CassandraDataAccess) FetchSensorData() ([]string, error) {
+	query := "SELECT recorded, location, sensor, measurement, units, value FROM sensor_data"
+	iter := c.Session.Query(query).Iter()
+	var recorded int64
+	var location, sensor, measurement, units string
+	var value float64
+	var results []string
+
+	for iter.Scan(&recorded, &location, &sensor, &measurement, &units, &value) {
+		sensorData := SensorDataCassandra{
+			Recorded:    recorded,
+			Location:    location,
+			Sensor:      sensor,
+			Measurement: measurement,
+			Units:       units,
+			Value:       value,
+		}
+		jsonBytes, err := json.Marshal(sensorData)
+		if err != nil {
+			fmt.Printf("failed to marshal SensorDataCassandra to JSON: %v\n", err)
+			continue
+		}
+		results = append(results, string(jsonBytes))
+	}
+
+	if err := iter.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close iterator: %w", err)
+	}
+
+	return results, nil
+}
+
+func (c *CassandraDataAccess) PurgeSensorData() error {
+	query := "TRUNCATE sensor_data"
+	if err := c.Session.Query(query).Exec(); err != nil {
+		return fmt.Errorf("failed to truncate sensor_data table: %w", err)
+	}
+	return nil
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/legos/echo-app/data/mongo_data.go
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package data
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log"
+	"strconv"
+	"time"
+
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+)
+
+// SensorDataJSON is for unmarshaling JSON where recorded might be a string
+type SensorDataMongoJSON struct {
+	Recorded    interface{} `json:"recorded"` // Accept both string and number
+	Location    string      `json:"location"`
+	Sensor      string      `json:"sensor"`
+	Measurement string      `json:"measurement"`
+	Units       string      `json:"units"`
+	Value       float64     `json:"value"`
+}
+
+type SensorDataMongo struct {
+	Recorded    int64   `json:"recorded" bson:"recorded"`
+	Location    string  `json:"location" bson:"location"`
+	Sensor      string  `json:"sensor" bson:"sensor"`
+	Measurement string  `json:"measurement" bson:"measurement"`
+	Units       string  `json:"units" bson:"units"`
+	Value       float64 `json:"value" bson:"value"`
+}
+
+// MongoDataAccess implements the SensorDataAccess interface for MongoDB
+type MongoDataAccess struct {
+	Client     *mongo.Client
+	Collection *mongo.Collection
+}
+
+// NewMongoDataAccess creates a new MongoDataAccess instance and connects
+func NewMongoDataAccess() (*MongoDataAccess, error) {
+	// Suppress mongo driver logging
+	log.SetOutput(io.Discard)
+	defer log.SetOutput(log.Writer())
+
+	// Connect to MongoDB
+	clientOpts := options.Client().ApplyURI("mongodb://localhost:27017")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	client, err := mongo.Connect(ctx, clientOpts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to MongoDB: %w", err)
+	}
+
+	// Ping the database to verify connection
+	if err := client.Ping(ctx, nil); err != nil {
+		return nil, fmt.Errorf("failed to ping MongoDB: %w", err)
+	}
+
+	fmt.Println("Connected to MongoDB")
+
+	// Get collection reference
+	collection := client.Database("sensor_data_db").Collection("sensor_data")
+
+	return &MongoDataAccess{
+		Client:     client,
+		Collection: collection,
+	}, nil
+}
+
+// Close disconnects the client
+func (m *MongoDataAccess) Close() {
+	if m.Client != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		m.Client.Disconnect(ctx)
+	}
+}
+
+// parseRecorded converts the recorded field to int64 whether it's a string or number
+func parseRecordedMongo(recorded interface{}) (int64, error) {
+	switch v := recorded.(type) {
+	case float64:
+		return int64(v), nil
+	case string:
+		return strconv.ParseInt(v, 10, 64)
+	case int64:
+		return v, nil
+	case int:
+		return int64(v), nil
+	case int32:
+		return int64(v), nil
+	default:
+		return 0, fmt.Errorf("recorded field has unexpected type: %T", v)
+	}
+}
+
+func (m *MongoDataAccess) LogSensorData(jsonData string) error {
+	var jsonStruct SensorDataMongoJSON
+	if err := json.Unmarshal([]byte(jsonData), &jsonStruct); err != nil {
+		return fmt.Errorf("failed to unmarshal JSON string: %w", err)
+	}
+
+	recorded, err := parseRecordedMongo(jsonStruct.Recorded)
+	if err != nil {
+		return fmt.Errorf("failed to parse recorded field: %w", err)
+	}
+
+	sensorData := SensorDataMongo{
+		Recorded:    recorded,
+		Location:    jsonStruct.Location,
+		Sensor:      jsonStruct.Sensor,
+		Measurement: jsonStruct.Measurement,
+		Units:       jsonStruct.Units,
+		Value:       jsonStruct.Value,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err = m.Collection.InsertOne(ctx, sensorData)
+	if err != nil {
+		return fmt.Errorf("failed to insert into MongoDB: %w", err)
+	}
+
+	return nil
+}
+
+func (m *MongoDataAccess) FetchSensorData() ([]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cursor, err := m.Collection.Find(ctx, bson.M{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve data from MongoDB: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var results []string
+	for cursor.Next(ctx) {
+		var sensorData SensorDataMongo
+		if err := cursor.Decode(&sensorData); err != nil {
+			fmt.Printf("failed to decode document: %v\n", err)
+			continue
+		}
+
+		jsonBytes, err := json.Marshal(sensorData)
+		if err != nil {
+			fmt.Printf("failed to marshal SensorDataMongo to JSON: %v\n", err)
+			continue
+		}
+		results = append(results, string(jsonBytes))
+	}
+
+	if err := cursor.Err(); err != nil {
+		return nil, fmt.Errorf("cursor error: %w", err)
+	}
+
+	return results, nil
+}
+
+func (m *MongoDataAccess) PurgeSensorData() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err := m.Collection.DeleteMany(ctx, bson.M{})
+	if err != nil {
+		return fmt.Errorf("failed to delete documents from MongoDB: %w", err)
+	}
+
+	return nil
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/legos/echo-app/data/mysql_data.go
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package data
+
+import (
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"strconv"
+
+	_ "github.com/go-sql-driver/mysql"
+)
+
+// SensorDataMySQLJSON is for unmarshaling JSON where recorded might be a string
+type SensorDataMySQLJSON struct {
+	Recorded    interface{} `json:"recorded"` // Accept both string and number
+	Location    string      `json:"location"`
+	Sensor      string      `json:"sensor"`
+	Measurement string      `json:"measurement"`
+	Units       string      `json:"units"`
+	Value       float64     `json:"value"`
+}
+
+type SensorDataMySQL struct {
+	Recorded    int64   `json:"recorded" mysql:"recorded"`
+	Location    string  `json:"location" mysql:"location"`
+	Sensor      string  `json:"sensor" mysql:"sensor"`
+	Measurement string  `json:"measurement" mysql:"measurement"`
+	Units       string  `json:"units" mysql:"units"`
+	Value       float64 `json:"value" mysql:"value"`
+}
+
+// MySQLDataAccess implements the SensorDataAccess interface for MySQL
+type MySQLDataAccess struct {
+	DB *sql.DB
+}
+
+// NewMySQLDataAccess creates a new MySQLDataAccess instance and connects
+func NewMySQLDataAccess() (*MySQLDataAccess, error) {
+	// Initialize MySQL connection to default 'mysql' database
+	db, err := sql.Open("mysql", "root:@tcp(localhost:3306)/mysql?parseTime=true")
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
+	}
+
+	// Create database if it doesn't exist
+	databaseName := "sensor_data_db"
+	query := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", databaseName)
+	if _, err := db.Exec(query); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to create database: %w", err)
+	}
+
+	// Use the created database
+	if _, err := db.Exec("USE sensor_data_db"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to select database: %w", err)
+	}
+
+	fmt.Println("Connected to MySQL and selected DB")
+
+	// Create table if it doesn't exist
+	tableQuery := `CREATE TABLE IF NOT EXISTS sensor_data (
+		recorded BIGINT,
+		location VARCHAR(255),
+		sensor VARCHAR(255),
+		measurement VARCHAR(255),
+		units VARCHAR(255),
+		value DECIMAL(10, 2)
+	)`
+	if _, err := db.Exec(tableQuery); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to create table: %w", err)
+	}
+
+	fmt.Println("Table created or already exists")
+
+	return &MySQLDataAccess{DB: db}, nil
+}
+
+// Close closes the database connection
+func (m *MySQLDataAccess) Close() {
+	if m.DB != nil {
+		m.DB.Close()
+	}
+}
+
+// parseRecorded converts the recorded field to int64 whether it's a string or number
+func parseRecordedMySQL(recorded interface{}) (int64, error) {
+	switch v := recorded.(type) {
+	case float64:
+		return int64(v), nil
+	case string:
+		return strconv.ParseInt(v, 10, 64)
+	case int64:
+		return v, nil
+	case int:
+		return int64(v), nil
+	default:
+		return 0, fmt.Errorf("recorded field has unexpected type: %T", v)
+	}
+}
+
+func (m *MySQLDataAccess) LogSensorData(jsonData string) error {
+	var jsonStruct SensorDataMySQLJSON
+	if err := json.Unmarshal([]byte(jsonData), &jsonStruct); err != nil {
+		return fmt.Errorf("failed to unmarshal JSON string: %w", err)
+	}
+
+	recorded, err := parseRecordedMySQL(jsonStruct.Recorded)
+	if err != nil {
+		return fmt.Errorf("failed to parse recorded field: %w", err)
+	}
+
+	sensorData := SensorDataMySQL{
+		Recorded:    recorded,
+		Location:    jsonStruct.Location,
+		Sensor:      jsonStruct.Sensor,
+		Measurement: jsonStruct.Measurement,
+		Units:       jsonStruct.Units,
+		Value:       jsonStruct.Value,
+	}
+
+	query := `INSERT INTO sensor_data (recorded, location, sensor, measurement, units, value)
+		VALUES (?, ?, ?, ?, ?, ?)`
+
+	_, err = m.DB.Exec(query,
+		sensorData.Recorded,
+		sensorData.Location,
+		sensorData.Sensor,
+		sensorData.Measurement,
+		sensorData.Units,
+		sensorData.Value)
+	if err != nil {
+		return fmt.Errorf("failed to insert into MySQL: %w", err)
+	}
+
+	return nil
+}
+
+func (m *MySQLDataAccess) FetchSensorData() ([]string, error) {
+	rows, err := m.DB.Query(`SELECT recorded, location, sensor, measurement, units, value FROM sensor_data`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query data from MySQL: %w", err)
+	}
+	defer rows.Close()
+
+	var results []string
+	for rows.Next() {
+		var sensorData SensorDataMySQL
+		err := rows.Scan(
+			&sensorData.Recorded,
+			&sensorData.Location,
+			&sensorData.Sensor,
+			&sensorData.Measurement,
+			&sensorData.Units,
+			&sensorData.Value,
+		)
+		if err != nil {
+			fmt.Printf("failed to scan row: %v\n", err)
+			continue
+		}
+
+		jsonBytes, err := json.Marshal(sensorData)
+		if err != nil {
+			fmt.Printf("failed to marshal SensorDataMySQL to JSON: %v\n", err)
+			continue
+		}
+		results = append(results, string(jsonBytes))
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("row iteration error: %w", err)
+	}
+
+	return results, nil
+}
+
+func (m *MySQLDataAccess) PurgeSensorData() error {
+	_, err := m.DB.Exec("DELETE FROM sensor_data")
+	if err != nil {
+		return fmt.Errorf("failed to delete data from MySQL: %w", err)
+	}
+
+	return nil
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/legos/echo-app/data/postgres_data.go
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package data
+
+import (
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"strconv"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
+)
+
+// SensorDataPostgresJSON is for unmarshaling JSON where recorded might be a string
+type SensorDataPostgresJSON struct {
+	Recorded    interface{} `json:"recorded"` // Accept both string and number
+	Location    string      `json:"location"`
+	Sensor      string      `json:"sensor"`
+	Measurement string      `json:"measurement"`
+	Units       string      `json:"units"`
+	Value       float64     `json:"value"`
+}
+
+type SensorDataPostgres struct {
+	Recorded    int64   `json:"recorded" postgres:"recorded"`
+	Location    string  `json:"location" postgres:"location"`
+	Sensor      string  `json:"sensor" postgres:"sensor"`
+	Measurement string  `json:"measurement" postgres:"measurement"`
+	Units       string  `json:"units" postgres:"units"`
+	Value       float64 `json:"value" postgres:"value"`
+}
+
+// PostgresDataAccess implements the SensorDataAccess interface for PostgreSQL
+type PostgresDataAccess struct {
+	DB *sql.DB
+}
+
+// NewPostgresDataAccess creates a new PostgresDataAccess instance and connects
+func NewPostgresDataAccess() (*PostgresDataAccess, error) {
+	// Connect to default 'postgres' database to check/create target DB
+	db, err := sql.Open("pgx", "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable")
+	if err != nil {
+		return nil, fmt.Errorf("failed to open default database: %w", err)
+	}
+
+	// Create database if it doesn't exist
+	databaseName := "sensor_data_db"
+	query := fmt.Sprintf("SELECT 1 FROM pg_database WHERE datname = '%s'", databaseName)
+	var exists int
+
+	err = db.QueryRow(query).Scan(&exists)
+	if err != nil && err != sql.ErrNoRows {
+		db.Close()
+		return nil, fmt.Errorf("failed to check for database existence: %w", err)
+	}
+
+	if exists == 0 {
+		_, err = db.Exec(`CREATE DATABASE sensor_data_db`)
+		if err != nil {
+			db.Close()
+			return nil, fmt.Errorf("failed to create database: %w", err)
+		}
+		fmt.Println("Database created")
+	}
+	db.Close()
+
+	// Connect to the specific 'sensor_data_db'
+	targetDB, err := sql.Open("pgx", "postgres://postgres:postgres@localhost:5432/sensor_data_db?sslmode=disable")
+	if err != nil {
+		return nil, fmt.Errorf("failed to open target database: %w", err)
+	}
+
+	fmt.Println("Connected to PostgreSQL")
+
+	// Create table if it doesn't exist
+	tableQuery := `CREATE TABLE IF NOT EXISTS sensor_data (
+		recorded BIGINT NOT NULL,
+		location VARCHAR(255) NOT NULL,
+		sensor VARCHAR(255) NOT NULL,
+		measurement VARCHAR(255) NOT NULL,
+		units VARCHAR(255) NOT NULL,
+		value NUMERIC(10, 2) NOT NULL
+	)`
+	if _, err := targetDB.Exec(tableQuery); err != nil {
+		targetDB.Close()
+		return nil, fmt.Errorf("failed to create table: %w", err)
+	}
+
+	fmt.Println("Table created or already exists")
+
+	return &PostgresDataAccess{DB: targetDB}, nil
+}
+
+// Close closes the database connection
+func (p *PostgresDataAccess) Close() {
+	if p.DB != nil {
+		p.DB.Close()
+	}
+}
+
+// parseRecorded converts the recorded field to int64 whether it's a string or number
+func parseRecordedPostgres(recorded interface{}) (int64, error) {
+	switch v := recorded.(type) {
+	case float64:
+		return int64(v), nil
+	case string:
+		return strconv.ParseInt(v, 10, 64)
+	case int64:
+		return v, nil
+	case int:
+		return int64(v), nil
+	default:
+		return 0, fmt.Errorf("recorded field has unexpected type: %T", v)
+	}
+}
+
+func (p *PostgresDataAccess) LogSensorData(jsonData string) error {
+	var jsonStruct SensorDataPostgresJSON
+	if err := json.Unmarshal([]byte(jsonData), &jsonStruct); err != nil {
+		return fmt.Errorf("failed to unmarshal JSON string: %w", err)
+	}
+
+	recorded, err := parseRecordedPostgres(jsonStruct.Recorded)
+	if err != nil {
+		return fmt.Errorf("failed to parse recorded field: %w", err)
+	}
+
+	sensorData := SensorDataPostgres{
+		Recorded:    recorded,
+		Location:    jsonStruct.Location,
+		Sensor:      jsonStruct.Sensor,
+		Measurement: jsonStruct.Measurement,
+		Units:       jsonStruct.Units,
+		Value:       jsonStruct.Value,
+	}
+
+	query := `INSERT INTO sensor_data (recorded, location, sensor, measurement, units, value)
+		VALUES ($1, $2, $3, $4, $5, $6)`
+
+	_, err = p.DB.Exec(query,
+		sensorData.Recorded,
+		sensorData.Location,
+		sensorData.Sensor,
+		sensorData.Measurement,
+		sensorData.Units,
+		sensorData.Value)
+	if err != nil {
+		return fmt.Errorf("failed to insert into PostgreSQL: %w", err)
+	}
+
+	return nil
+}
+
+func (p *PostgresDataAccess) FetchSensorData() ([]string, error) {
+	rows, err := p.DB.Query(`SELECT recorded, location, sensor, measurement, units, value FROM sensor_data`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query data from PostgreSQL: %w", err)
+	}
+	defer rows.Close()
+
+	var results []string
+	for rows.Next() {
+		var sensorData SensorDataPostgres
+		err := rows.Scan(
+			&sensorData.Recorded,
+			&sensorData.Location,
+			&sensorData.Sensor,
+			&sensorData.Measurement,
+			&sensorData.Units,
+			&sensorData.Value,
+		)
+		if err != nil {
+			fmt.Printf("failed to scan row: %v\n", err)
+			continue
+		}
+
+		jsonBytes, err := json.Marshal(sensorData)
+		if err != nil {
+			fmt.Printf("failed to marshal SensorDataPostgres to JSON: %v\n", err)
+			continue
+		}
+		results = append(results, string(jsonBytes))
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("row iteration error: %w", err)
+	}
+
+	return results, nil
+}
+
+func (p *PostgresDataAccess) PurgeSensorData() error {
+	_, err := p.DB.Exec("DELETE FROM sensor_data")
+	if err != nil {
+		return fmt.Errorf("failed to delete data from PostgreSQL: %w", err)
+	}
+
+	return nil
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/legos/echo-app/data/redis_data.go
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package data
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strconv"
+
+	"github.com/redis/go-redis/v9"
+	"github.com/redis/go-redis/v9/maintnotifications"
+)
+
+// SensorDataRedisJSON is for unmarshaling JSON where recorded might be a string
+type SensorDataRedisJSON struct {
+	Recorded    interface{} `json:"recorded"` // Accept both string and number
+	Location    string      `json:"location"`
+	Sensor      string      `json:"sensor"`
+	Measurement string      `json:"measurement"`
+	Units       string      `json:"units"`
+	Value       float64     `json:"value"`
+}
+
+type SensorDataRedis struct {
+	Recorded    int64   `json:"recorded"`
+	Location    string  `json:"location"`
+	Sensor      string  `json:"sensor"`
+	Measurement string  `json:"measurement"`
+	Units       string  `json:"units"`
+	Value       float64 `json:"value"`
+}
+
+// RedisDataAccess implements the SensorDataAccess interface for Redis
+type RedisDataAccess struct {
+	Client *redis.Client
+	Key    string
+}
+
+// NewRedisDataAccess creates a new RedisDataAccess instance
+func NewRedisDataAccess() (*RedisDataAccess, error) {
+	// Initialize Redis client
+	client := redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "",
+		DB:       0,
+		MaintNotificationsConfig: &maintnotifications.Config{
+			Mode: maintnotifications.ModeDisabled,
+		},
+	})
+
+	// Test connection
+	ctx := context.Background()
+	if err := client.Ping(ctx).Err(); err != nil {
+		return nil, fmt.Errorf("failed to connect to Redis: %w", err)
+	}
+
+	fmt.Println("Connected to Redis")
+
+	return &RedisDataAccess{
+		Client: client,
+		Key:    "sensor_data:readings",
+	}, nil
+}
+
+// Close closes the Redis client
+func (r *RedisDataAccess) Close() {
+	if r.Client != nil {
+		r.Client.Close()
+	}
+}
+
+// parseRecorded converts the recorded field to int64 whether it's a string or number
+func parseRecordedRedis(recorded interface{}) (int64, error) {
+	switch v := recorded.(type) {
+	case float64:
+		return int64(v), nil
+	case string:
+		return strconv.ParseInt(v, 10, 64)
+	case int64:
+		return v, nil
+	case int:
+		return int64(v), nil
+	default:
+		return 0, fmt.Errorf("recorded field has unexpected type: %T", v)
+	}
+}
+
+func (r *RedisDataAccess) LogSensorData(jsonData string) error {
+	var jsonStruct SensorDataRedisJSON
+	if err := json.Unmarshal([]byte(jsonData), &jsonStruct); err != nil {
+		return fmt.Errorf("failed to unmarshal JSON string: %w", err)
+	}
+
+	recorded, err := parseRecordedRedis(jsonStruct.Recorded)
+	if err != nil {
+		return fmt.Errorf("failed to parse recorded field: %w", err)
+	}
+
+	sensorData := SensorDataRedis{
+		Recorded:    recorded,
+		Location:    jsonStruct.Location,
+		Sensor:      jsonStruct.Sensor,
+		Measurement: jsonStruct.Measurement,
+		Units:       jsonStruct.Units,
+		Value:       jsonStruct.Value,
+	}
+
+	// Marshal back to JSON for storage
+	jsonBytes, err := json.Marshal(sensorData)
+	if err != nil {
+		return fmt.Errorf("failed to marshal sensor data: %w", err)
+	}
+
+	ctx := context.Background()
+	if err := r.Client.RPush(ctx, r.Key, string(jsonBytes)).Err(); err != nil {
+		return fmt.Errorf("failed to insert into Redis: %w", err)
+	}
+
+	return nil
+}
+
+func (r *RedisDataAccess) FetchSensorData() ([]string, error) {
+	ctx := context.Background()
+
+	values, err := r.Client.LRange(ctx, r.Key, 0, -1).Result()
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch data from Redis: %w", err)
+	}
+
+	return values, nil
+}
+
+func (r *RedisDataAccess) PurgeSensorData() error {
+	ctx := context.Background()
+
+	if err := r.Client.Del(ctx, r.Key).Err(); err != nil {
+		return fmt.Errorf("failed to delete data from Redis: %w", err)
+	}
+
+	return nil
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/legos/echo-app/data/sensor_data_access.go
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package data
+
+import "fmt"
+
+// SensorDataAccess defines the interface for data access operations
+type SensorDataAccess interface {
+    LogSensorData(jsonData string) error
+    FetchSensorData() ([]string, error)
+    PurgeSensorData() error
+}
+
+// Helper function to handle unsupported data access types
+func UnsupportedDataAccess(dataAccessType string) {
+    panic(fmt.Sprintf("Unsupported DATA_ACCESS type: %s", dataAccessType))
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/legos/echo-app/data/sensor_data_helper.go
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package data
+
+import (
+	"sort"
+	"strings"
+	"encoding/json"
+	"fmt"
+	"math"
+	"math/rand"
+	"time"
+)
+
+// JSON String Literal
+const SENSOR_DATA_JSON_STRING = `{
+	"recorded": 1768237200,
+	"location": "den",
+	"sensor": "bmp280",
+	"measurement": "temperature",
+	"units": "C",
+	"value": 22.3
+}`
+
+// JSON Object Helper Function
+func GetSensorDataJsonObject() map[string]interface{} {
+	var data map[string]interface{}
+	err := json.Unmarshal([]byte(SENSOR_DATA_JSON_STRING), &data)
+	if err != nil {
+		fmt.Printf("Error unmarshalling SENSOR_DATA_JSON_STRING: %v\n", err)
+		return nil
+	}
+	return data
+}
+
+// JSON Array Helper Function
+func GetSensorDataJsonArray() []interface{} {
+	jsonArrayString := "[" + SENSOR_DATA_JSON_STRING + "]"
+	var data []interface{}
+	err := json.Unmarshal([]byte(jsonArrayString), &data)
+	if err != nil {
+		fmt.Printf("Error unmarshalling JSON array string: %v\n", err)
+		return nil
+	}
+	return data
+}
+
+// Create a new map to hold the sensor data with random values for keys recorded and value
+func GetRandomSensorDataJsonString() []byte {
+	// Create a new map to hold the sensor data
+	var sensorData = GetSensorDataJsonObject()
+
+	// Generate a random seed to use for generating random values
+	// Note: rand.Seed is deprecated in newer Go versions (1.20+) as global random is seeded automatically,
+	// but kept here for compatibility with older environments if needed.
+	rand.Seed(time.Now().UnixNano())
+	sensorData["recorded"] = time.Now().Unix()
+	var value float64 = 22.4 + rand.Float64()*(32.1-22.4)
+	value = math.Round(value*float64(math.Pow10(1))) / float64(math.Pow10(1))
+	sensorData["value"] = value
+
+	// Convert the map to a byte slice using json.Marshal
+	b, _ := json.Marshal(sensorData)
+
+	return b
+}
+
+// RemoveKeyValuePair removes a key-value pair from a map
+func RemoveKeyValuePair(mapVar map[string]string, keyToRemove string) {
+	if _, ok := mapVar[keyToRemove]; ok {
+		delete(mapVar, keyToRemove)
+	}
+}
+
+// JsonToCSV converts a JSON array string to CSV format
+// Input: []string where each string is a JSON object from FetchSensorData
+// Output: CSV string with headers and rows
+func JsonToCSV(jsonArray []string) (string, error) {
+	if len(jsonArray) == 0 {
+		return "", nil
+	}
+
+	// Parse all JSON objects to get their fields
+	var records []map[string]interface{}
+	var allKeys map[string]bool = make(map[string]bool)
+
+	for _, jsonStr := range jsonArray {
+		var record map[string]interface{}
+		if err := json.Unmarshal([]byte(jsonStr), &record); err != nil {
+			return "", fmt.Errorf("failed to parse JSON: %w", err)
+		}
+		records = append(records, record)
+
+		// Collect all unique keys
+		for key := range record {
+			allKeys[key] = true
+		}
+	}
+
+	// Sort keys for consistent column order
+	var keys []string
+	for key := range allKeys {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	// Build CSV
+	var csvBuilder strings.Builder
+
+	// Write header row
+	csvBuilder.WriteString(strings.Join(keys, ","))
+	csvBuilder.WriteString("\n")
+
+	// Write data rows
+	for _, record := range records {
+		var values []string
+		for _, key := range keys {
+			value := record[key]
+
+			// Special handling for numeric values to avoid scientific notation
+			if floatVal, ok := value.(float64); ok {
+				// Check if it's actually an integer (no decimal part)
+				if floatVal == float64(int64(floatVal)) {
+					values = append(values, fmt.Sprintf("%d", int64(floatVal)))
+				} else {
+					values = append(values, fmt.Sprintf("%v", value))
+				}
+			} else {
+				values = append(values, fmt.Sprintf("%v", value))
+			}
+		}
+		csvBuilder.WriteString(strings.Join(values, ","))
+		csvBuilder.WriteString("\n")
+	}
+
+	return csvBuilder.String(), nil
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/legos/echo-app/main.go
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package main
+
+import (
+	"os"
+	"net/http"
+	"encoding/json"
+	"log"
+
+	"github.com/labstack/echo/v4"
+	"echo-app/data"
+)
+
+// Global data access instance - created once, reused for all requests
+var dataAccess data.SensorDataAccess
+
+func initDataAccess() error {
+	dataAccessType := os.Getenv("DATA_ACCESS")
+	if dataAccessType == "" {
+		dataAccessType = "redis"
+	}
+
+	var err error
+	switch dataAccessType {
+	case "cassandra":
+		dataAccess, err = data.NewCassandraDataAccess()
+	case "mongo":
+		dataAccess, err = data.NewMongoDataAccess()
+	case "mysql":
+		dataAccess, err = data.NewMySQLDataAccess()
+	case "postgres":
+		dataAccess, err = data.NewPostgresDataAccess()
+	case "redis":
+		dataAccess, err = data.NewRedisDataAccess()
+	default:
+        data.UnsupportedDataAccess(dataAccessType)
+        return nil
+	}
+
+	if err != nil {
+		return err
+	}
+
+	log.Printf("Data access initialized: %s", dataAccessType)
+	return nil
+}
+
+func main() {
+	// Initialize database connection once at startup
+	if err := initDataAccess(); err != nil {
+		log.Fatalf("Failed to initialize data access: %v", err)
+	}
+
+	// Clean up connection on exit
+	if closer, ok := dataAccess.(interface{ Close() }); ok {
+		defer closer.Close()
+	}
+
+	e := echo.New()
+
+	e.GET("/", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]string{"message": "Echo API Server is running!"})
+	})
+
+	e.POST("/echo", func(c echo.Context) error {
+		var requestBody map[string]interface{}
+		if err := c.Bind(&requestBody); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request"})
+		}
+		return c.JSON(http.StatusOK, requestBody)
+	})
+
+	e.POST("/log", func(c echo.Context) error {
+		var requestBody map[string]interface{}
+		if err := c.Bind(&requestBody); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request"})
+		}
+
+		// Marshal to JSON string
+		bytes, err := json.Marshal(requestBody)
+		if err != nil {
+			log.Printf("Failed to marshal request body: %v", err)
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid JSON"})
+		}
+
+		// Log to database using the global connection
+		if err := dataAccess.LogSensorData(string(bytes)); err != nil {
+			log.Printf("Failed to log sensor data: %v", err)
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to log sensor data"})
+		}
+
+		return c.JSON(http.StatusOK, map[string]string{"message": "Data logged successfully"})
+	})
+
+	e.GET("/report", func(c echo.Context) error {
+		// Fetch data using the global connection
+		sensorData, err := dataAccess.FetchSensorData()
+		if err != nil {
+			log.Printf("Failed to fetch sensor data: %v", err)
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch sensor data"})
+		}
+
+		// Convert JSON array to CSV
+		csvData, err := data.JsonToCSV(sensorData)
+		if err != nil {
+			log.Printf("Failed to convert to CSV: %v", err)
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to generate CSV"})
+		}
+
+		c.Response().Header().Set(echo.HeaderContentType, "text/csv")
+		c.Response().Header().Set(echo.HeaderContentDisposition, `attachment; filename="report.csv"`)
+		return c.String(http.StatusOK, csvData)
+	})
+
+	e.Any("/purge", func(c echo.Context) error {
+		// Purge using the global connection
+		if err := dataAccess.PurgeSensorData(); err != nil {
+			log.Printf("Failed to purge sensor data: %v", err)
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to purge sensor data"})
+		}
+
+		return c.JSON(http.StatusOK, map[string]string{"message": "Purge executed successfully"})
+	})
+
+	log.Println("Starting server on :8080")
+	e.Logger.Fatal(e.Start(":8080"))
+}
+
+
+
+========================================
+PROJECT: access
+PATH: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/access
+========================================
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/access/dataaccess/CassandraDataAccess.go
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package dataaccess
+
+import "fmt"
+
+// CassandraDataAccess implements the SensorDataAccess interface for Cassandra
+type CassandraDataAccess struct{}
+
+// NewCassandraDataAccess creates a new CassandraDataAccess instance
+func NewCassandraDataAccess() *CassandraDataAccess {
+    return &CassandraDataAccess{}
+}
+
+func (c *CassandraDataAccess) LogSensorData(jsonData string) error {
+    fmt.Printf("Logging sensor data to Cassandra: %s\n", jsonData)
+    return nil
+}
+
+func (c *CassandraDataAccess) FetchSensorData() ([]string, error) {
+    fmt.Println("Fetching sensor data from Cassandra")
+    return []string{`{"sensor":"pressure","value":1013}`}, nil
+}
+
+func (c *CassandraDataAccess) PurgeSensorData() error {
+    fmt.Println("Purging sensor data from Cassandra")
+    return nil
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/access/dataaccess/MongoDataAccess.go
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package dataaccess
+
+import "fmt"
+
+// MongoDataAccess implements the SensorDataAccess interface for MongoDB
+type MongoDataAccess struct{}
+
+// NewMongoDataAccess creates a new MongoDataAccess instance
+func NewMongoDataAccess() *MongoDataAccess {
+    return &MongoDataAccess{}
+}
+
+func (m *MongoDataAccess) LogSensorData(jsonData string) error {
+    fmt.Printf("Logging sensor data to MongoDB: %s\n", jsonData)
+    return nil
+}
+
+func (m *MongoDataAccess) FetchSensorData() ([]string, error) {
+    fmt.Println("Fetching sensor data from MongoDB")
+    return []string{`{"sensor":"humidity","value":45.6}`}, nil
+}
+
+func (m *MongoDataAccess) PurgeSensorData() error {
+    fmt.Println("Purging sensor data from MongoDB")
+    return nil
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/access/dataaccess/MySQLDataAccess.go
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package dataaccess
+
+import "fmt"
+
+// MySQLDataAccess implements the SensorDataAccess interface for MySQL
+type MySQLDataAccess struct{}
+
+// NewMySQLDataAccess creates a new MySQLDataAccess instance
+func NewMySQLDataAccess() *MySQLDataAccess {
+    return &MySQLDataAccess{}
+}
+
+func (m *MySQLDataAccess) LogSensorData(jsonData string) error {
+    fmt.Printf("Logging sensor data to MySQL: %s\n", jsonData)
+    return nil
+}
+
+func (m *MySQLDataAccess) FetchSensorData() ([]string, error) {
+    fmt.Println("Fetching sensor data from MySQL")
+    return []string{`{"sensor":"light","value":300}`}, nil
+}
+
+func (m *MySQLDataAccess) PurgeSensorData() error {
+    fmt.Println("Purging sensor data from MySQL")
+    return nil
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/access/dataaccess/PostgresDataAccess.go
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package dataaccess
+
+import "fmt"
+
+// PostgresDataAccess implements the SensorDataAccess interface for PostgreSQL
+type PostgresDataAccess struct{}
+
+// NewPostgresDataAccess creates a new PostgresDataAccess instance
+func NewPostgresDataAccess() *PostgresDataAccess {
+    return &PostgresDataAccess{}
+}
+
+func (p *PostgresDataAccess) LogSensorData(jsonData string) error {
+    fmt.Printf("Logging sensor data to PostgreSQL: %s\n", jsonData)
+    return nil
+}
+
+func (p *PostgresDataAccess) FetchSensorData() ([]string, error) {
+    fmt.Println("Fetching sensor data from PostgreSQL")
+    return []string{`{"sensor":"sound","value":75}`}, nil
+}
+
+func (p *PostgresDataAccess) PurgeSensorData() error {
+    fmt.Println("Purging sensor data from PostgreSQL")
+    return nil
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/access/dataaccess/RedisDataAccess.go
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package dataaccess
+
+import "fmt"
+
+// RedisDataAccess implements the SensorDataAccess interface for Redis
+type RedisDataAccess struct{}
+
+// NewRedisDataAccess creates a new RedisDataAccess instance
+func NewRedisDataAccess() *RedisDataAccess {
+    return &RedisDataAccess{}
+}
+
+func (r *RedisDataAccess) LogSensorData(jsonData string) error {
+    fmt.Printf("Logging sensor data to Redis: %s\n", jsonData)
+    return nil
+}
+
+func (r *RedisDataAccess) FetchSensorData() ([]string, error) {
+    fmt.Println("Fetching sensor data from Redis")
+    return []string{`{"sensor":"temperature","value":22.3}`}, nil
+}
+
+func (r *RedisDataAccess) PurgeSensorData() error {
+    fmt.Println("Purging sensor data from Redis")
+    return nil
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/access/dataaccess/SensorDataAccessInterface.go
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package dataaccess
+
+import "fmt"
+
+// SensorDataAccess defines the interface for data access operations
+type SensorDataAccess interface {
+    LogSensorData(jsonData string) error
+    FetchSensorData() ([]string, error)
+    PurgeSensorData() error
+}
+
+// Helper function to handle unsupported data access types
+func UnsupportedDataAccess(dataAccessType string) {
+    panic(fmt.Sprintf("Unsupported DATA_ACCESS type: %s", dataAccessType))
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/access/main.go
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package main
+
+import (
+    "fmt"
+    "os"
+	"access/dataaccess"
+)
+
+func getDataAccess() dataaccess.SensorDataAccess {
+    dataAccessType := os.Getenv("DATA_ACCESS")
+    if dataAccessType == "" {
+        dataAccessType = "redis"
+    }
+
+    switch dataAccessType {
+    case "redis":
+        return dataaccess.NewRedisDataAccess()
+    case "mongo":
+        return dataaccess.NewMongoDataAccess()
+    case "cassandra":
+        return dataaccess.NewCassandraDataAccess()
+    case "mysql":
+        return dataaccess.NewMySQLDataAccess()
+    case "postgres":
+        return dataaccess.NewPostgresDataAccess()
+    default:
+        dataaccess.UnsupportedDataAccess(dataAccessType)
+        return nil
+    }
+}
+
+func main() {
+    dataAccess := getDataAccess()
+
+    // Log sensor data
+    err := dataAccess.LogSensorData(`{"sensor":"temperature","value":22.3}`)
+    if err != nil {
+        fmt.Println("Error logging sensor data:", err)
+    }
+
+    // Fetch sensor data
+    data, err := dataAccess.FetchSensorData()
+    if err != nil {
+        fmt.Println("Error fetching sensor data:", err)
+    } else {
+        fmt.Println("Fetched sensor data:", data)
+    }
+
+    // Purge sensor data
+    err = dataAccess.PurgeSensorData()
+    if err != nil {
+        fmt.Println("Error purging sensor data:", err)
+    }
+}
+
+
+
+========================================
+PROJECT: gin-app
+PATH: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/api/gin-app
+========================================
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/api/gin-app/main.go
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package main
+
+import (
+    "net/http"
+	"fmt"
+	"strings"
+    "github.com/gin-gonic/gin"
+)
+
+var jsonData = map[string]interface{}{
+	"recorded":    1756655999,
+	"location":    "den",
+	"sensor":      "bmp280",
+	"measurement": "temperature",
+	"units":       "C",
+	"value":       22.3,
+}
+
+func jsonToCSV(jsonData map[string]interface{}) string {
+	var csvData string
+	var keys []string
+	var values []string
+
+	for key, value := range jsonData {
+		keys = append(keys, key)
+		values = append(values, fmt.Sprintf("%v", value))
+	}
+
+	csvData += strings.Join(keys, ",") + "\n"
+	csvData += strings.Join(values, ",")
+	return csvData
+}
+
+func main() {
+    // Create a new Gin router
+    r := gin.Default()
+
+    // Define a GET route for the root path
+    r.GET("/", func(c *gin.Context) {
+        c.JSON(http.StatusOK, gin.H{
+            "message": "Gin API Server is running!",
+        })
+    })
+    // Define a POST route for /echo
+    r.POST("/echo", func(c *gin.Context) {
+        var requestBody map[string]interface{}
+        if err := c.ShouldBindJSON(&requestBody); err != nil {
+            c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+            return
+        }
+        c.JSON(http.StatusOK, requestBody)
+    })
+
+    // Define a POST route for /log
+    r.POST("/log", func(c *gin.Context) {
+        var requestBody map[string]interface{}
+        if err := c.ShouldBindJSON(&requestBody); err != nil {
+            c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+            return
+        }
+        c.JSON(http.StatusOK, requestBody)
+    })
+
+    // Define a GET route for /report
+    r.GET("/report", func(c *gin.Context) {
+        csvData := jsonToCSV(jsonData)
+        c.Header("Content-Disposition", "attachment; filename=report.csv")
+        c.Header("Content-Type", "text/csv")
+        c.String(http.StatusOK, csvData)
+    })
+
+    // Define a route for /purge that supports both GET and POST
+    r.Any("/purge", func(c *gin.Context) {
+        if c.Request.Method == http.MethodGet || c.Request.Method == http.MethodPost {
+            c.JSON(http.StatusOK, gin.H{"status": "purged"})
+        } else {
+            c.JSON(http.StatusMethodNotAllowed, gin.H{"error": "Method not allowed"})
+        }
+    })
+    // Start the server on port 8080
+    r.Run(":8080")
+}
+
+
+
+========================================
+PROJECT: echo-app
+PATH: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/api/echo-app
+========================================
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/api/echo-app/main.go
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package main
+
+import (
+	"net/http"
+	"fmt"
+	"strings"
+	"github.com/labstack/echo/v4"
+)
+
+var jsonData = map[string]interface{}{
+	"recorded":    1756655999,
+	"location":    "den",
+	"sensor":      "bmp280",
+	"measurement": "temperature",
+	"units":       "C",
+	"value":       22.3,
+}
+
+func jsonToCSV(jsonData map[string]interface{}) string {
+	var csvData string
+	var keys []string
+	var values []string
+
+	for key, value := range jsonData {
+		keys = append(keys, key)
+		values = append(values, fmt.Sprintf("%v", value))
+	}
+
+	csvData += strings.Join(keys, ",") + "\n"
+	csvData += strings.Join(values, ",")
+	return csvData
+}
+
+func main() {
+
+	e := echo.New()
+
+	e.GET("/", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]string{"message": "Echo API Server is running!"})
+	})
+
+	e.POST("/echo", func(c echo.Context) error {
+		var requestBody map[string]interface{}
+		if err := c.Bind(&requestBody); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request"})
+		}
+		return c.JSON(http.StatusOK, requestBody)
+	})
+
+	e.POST("/log", func(c echo.Context) error {
+		var requestBody map[string]interface{}
+		if err := c.Bind(&requestBody); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request"})
+		}
+		return c.JSON(http.StatusOK, requestBody)
+	})
+
+	e.GET("/report", func(c echo.Context) error {
+		csvData := jsonToCSV(jsonData)
+		c.Response().Header().Set(echo.HeaderContentType, "text/csv")
+		c.Response().Header().Set(echo.HeaderContentDisposition, `attachment; filename="report.csv"`)
+		return c.String(http.StatusOK, csvData)
+	})
+
+	e.Any("/purge", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]string{"message": "Purge executed"})
+	})
+
+	e.Logger.Fatal(e.Start(":8080"))
+}
+
+
+
+========================================
+PROJECT: data
+PATH: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/data
+========================================
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/data/database/cassandra_data.go
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package database
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"github.com/gocql/gocql"
+)
+
+type SensorDataCassandra struct {
+	Recorded    int64   `cassandra:"recorded"`
+	Location    string  `cassandra:"location"`
+	Sensor      string  `cassandra:"sensor"`
+	Measurement string  `cassandra:"measurement"`
+	Units       string  `cassandra:"units"`
+	Value       float64 `cassandra:"value"`
+}
+
+// CassandraData struct for Cassandra
+type CassandraData struct {
+	Session *gocql.Session
+}
+
+// NewCassandraData creates a new CassandraData instance and establishes connection
+func NewCassandraData() (*CassandraData, error) {
+	// Connect to Cassandra
+	cluster := gocql.NewCluster("localhost")
+	cluster.Port = 9042
+	cluster.Keyspace = "system" // Connect to system to create keyspace
+	cluster.Consistency = gocql.Quorum
+	cluster.DisableInitialHostLookup = true
+
+	session, err := cluster.CreateSession()
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to Cassandra: %w", err)
+	}
+
+	fmt.Println("Connected to Cassandra")
+
+	// Create the keyspace if it doesn't exist
+	var query = `SELECT keyspace_name FROM system_schema.keyspaces WHERE keyspace_name = ?;`
+	var kspName string
+	if err := session.Query(query, "sensor_data_db").Scan(&kspName); err != nil {
+		if err != gocql.ErrNotFound {
+			session.Close()
+			return nil, fmt.Errorf("database error checking keyspace: %w", err)
+		}
+	}
+
+	if kspName == "" {
+		query = `CREATE KEYSPACE IF NOT EXISTS sensor_data_db WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};`
+		if err := session.Query(query).Exec(); err != nil {
+			session.Close()
+			return nil, fmt.Errorf("failed to create keyspace: %w", err)
+		}
+		fmt.Println("Keyspace created")
+	}
+	session.Close()
+
+	// Reconnect to the specific Keyspace
+	cluster.Keyspace = "sensor_data_db"
+	session, err = cluster.CreateSession()
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to sensor_data_db keyspace: %w", err)
+	}
+
+	return &CassandraData{Session: session}, nil
+}
+
+// Close cleans up the session
+func (c *CassandraData) Close() {
+	if c.Session != nil {
+		c.Session.Close()
+	}
+}
+
+func (c *CassandraData) RawCassandraData() {
+	// Create the table if it doesn't exist
+	query := `CREATE TABLE IF NOT EXISTS sensor_data (
+			 recorded bigint,
+			 location text,
+			 sensor text,
+			 measurement text,
+			 units text,
+			 value double,
+			 PRIMARY KEY (recorded, location, sensor, measurement)
+			);`
+	if err := c.Session.Query(query).Exec(); err != nil {
+		fmt.Printf("Failed to create table: %v\n", err)
+		return
+	}
+	fmt.Println("Table created or already exists")
+
+	// Convert JSON string to SensorDataCassandra struct
+	var sensorDataCassandra SensorDataCassandra
+	if err := json.Unmarshal([]byte(getRandomSensorDataJsonString()), &sensorDataCassandra); err != nil {
+		fmt.Printf("Failed to unmarshal JSON string: %v\n", err)
+		return
+	}
+	fmt.Println("JSON string converted to SensorDataCassandra struct")
+
+	// Insert the SensorData into the "sensor_data" table
+	query = "INSERT INTO sensor_data (recorded, location, sensor, measurement, units, value) VALUES (?, ?, ?, ?, ?, ?)"
+	if err := c.Session.Query(query,
+		sensorDataCassandra.Recorded,
+		sensorDataCassandra.Location,
+		sensorDataCassandra.Sensor,
+		sensorDataCassandra.Measurement,
+		sensorDataCassandra.Units,
+		sensorDataCassandra.Value,
+	).Exec(); err != nil {
+		fmt.Printf("Failed to insert into sensor_data: %v\n", err)
+		return
+	}
+	fmt.Println("SensorDataCassandra stored")
+
+	// Retrieve all SensorData from the "sensor_data" table
+	query = "SELECT recorded, location, sensor, measurement, units, value FROM sensor_data"
+	iter := c.Session.Query(query).Iter()
+	var recorded int64
+	var location, sensor, measurement, units string
+	var value float64
+	var results []string
+
+	// Iterate over the results
+	for iter.Scan(&recorded, &location, &sensor, &measurement, &units, &value) {
+		sensorData := SensorDataCassandra{
+			Recorded:    recorded,
+			Location:    location,
+			Sensor:      sensor,
+			Measurement: measurement,
+			Units:       units,
+			Value:       value,
+		}
+		// Marshal the SensorDataCassandra struct to JSON
+		jsonBytes, err := json.Marshal(sensorData)
+		if err != nil {
+			fmt.Printf("failed to marshal SensorDataCassandra to JSON: %v\n", err)
+			continue
+		}
+		results = append(results, string(jsonBytes))
+	}
+
+	if err := iter.Close(); err != nil {
+		fmt.Printf("failed to close iterator: %v\n", err)
+		return
+	}
+
+	// Join results with commas to form a valid JSON array
+	if len(results) > 0 {
+		data := []string{"[" + strings.Join(results, ",") + "]"}
+
+		// Convert JSON array to CSV string
+		csvString, err := jsonToCSV(strings.Join(data, "\n"))
+		if err != nil {
+			fmt.Println(err)
+		} else {
+			fmt.Printf("%s\n%s", "SensorDataCassandra retrieved", csvString)
+		}
+	}
+
+	// Truncate the sensor_data table
+	query = "TRUNCATE sensor_data"
+	if err := c.Session.Query(query).Exec(); err != nil {
+		fmt.Printf("Failed to truncate sensor_data table: %v\n", err)
+		return
+	}
+	fmt.Println("SensorDataCassandra purged")
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/data/database/mongo_data.go
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package database
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"time"
+
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+)
+
+type SensorDataMongo struct {
+	ID          primitive.ObjectID `bson:"_id,omitempty"`
+	Recorded    int32              `bson:"recorded"`
+	Location    string             `bson:"location"`
+	Sensor      string             `bson:"sensor"`
+	Measurement string             `bson:"measurement"`
+	Units       string             `bson:"units"`
+	Value       float64            `bson:"value"`
+}
+
+// MongoData struct for MongoDB
+type MongoData struct {
+	Client *mongo.Client
+}
+
+// NewMongoData creates a new MongoData instance and connects
+func NewMongoData() (*MongoData, error) {
+	// Connect to MongoDB
+	clientOpts := options.Client().ApplyURI("mongodb://localhost:27017/sensor_data")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	client, err := mongo.Connect(ctx, clientOpts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to MongoDB: %w", err)
+	}
+
+	// Ping the database to verify connection
+	if err := client.Ping(ctx, nil); err != nil {
+		return nil, fmt.Errorf("failed to ping MongoDB: %w", err)
+	}
+
+	fmt.Println("Connected to MongoDB")
+	return &MongoData{Client: client}, nil
+}
+
+// Close disconnects the client
+func (c *MongoData) Close() {
+	if c.Client != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		c.Client.Disconnect(ctx)
+	}
+}
+
+func (c *MongoData) RawMongoData() {
+	// Convert JSON string to SensorDataMongo struct
+	var sensorDataMongo SensorDataMongo
+	if err := json.Unmarshal([]byte(getRandomSensorDataJsonString()), &sensorDataMongo); err != nil {
+		fmt.Printf("Failed to unmarshal JSON string into SensorData: %v\n", err)
+		return
+	}
+	fmt.Println("JSON string converted to SensorDataMongo struct")
+
+	// Insert the SensorData into the "sensor_data" collection
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	collection := c.Client.Database("sensor_data_db").Collection("sensor_data")
+
+	_, err := collection.InsertOne(ctx, sensorDataMongo)
+	if err != nil {
+		fmt.Printf("Failed to insert SensorData into MongoDB: %v\n", err)
+		return
+	}
+	fmt.Println("SensorDataMongo stored")
+
+	// Retrieve all SensorData from the "sensor_data" collection
+	// Refresh context
+	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cursor, err := collection.Find(ctx, bson.M{})
+	if err != nil {
+		fmt.Printf("Failed to retrieve Collection from MongoDB: %v\n", err)
+		return
+	}
+	defer cursor.Close(ctx)
+
+	// Iterate through the cursor and print each document
+	var results []bson.M
+	if err := cursor.All(ctx, &results); err != nil {
+		fmt.Printf("failed to retrieve SensorData from MongoDB: %v\n", err)
+		return
+	}
+
+	for _, result := range results {
+		delete(result, "_id")
+	}
+
+	jsonResults, err := json.Marshal(results)
+	if err != nil {
+		fmt.Printf("Failed to marshal results: %v\n", err)
+		return
+	}
+
+	// Convert JSON array to CSV string
+	csvString, err := jsonToCSV(string(jsonResults))
+	if err != nil {
+		fmt.Println(err)
+	} else {
+		fmt.Printf("%s\n%s", "SensorDataMongo retrieved", csvString)
+	}
+
+	// Purge all SensorData from the "sensor_data" collection
+	_, err = collection.DeleteMany(ctx, bson.M{})
+	if err != nil {
+		fmt.Printf("failed to delete documents: %v\n", err)
+		return
+	}
+	fmt.Println("SensorDataMongo purged")
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/data/database/mysql_data.go
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package database
+
+import (
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	_ "github.com/go-sql-driver/mysql"
+)
+
+type SensorDataMySQL struct {
+	Recorded    int64   `mysql:"recorded"`
+	Location    string  `mysql:"location"`
+	Sensor      string  `mysql:"sensor"`
+	Measurement string  `mysql:"measurement"`
+	Units       string  `mysql:"units"`
+	Value       float64 `mysql:"value"`
+}
+
+// MySQLData struct for MySQL
+type MySQLData struct {
+	DB *sql.DB
+}
+
+// NewMySQLData creates a new MySQLData instance and connects
+func NewMySQLData() (*MySQLData, error) {
+	// Initialize MySQL connection to default 'mysql' database
+	db, err := sql.Open("mysql", "root:@tcp(localhost:3306)/mysql?parseTime=true")
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
+	}
+
+	// Create database if it doesn't exist
+	databaseName := "sensor_data_db"
+	query := fmt.Sprintf("SHOW DATABASES LIKE '%s'", databaseName)
+	rows, err := db.Query(query)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("show database query failed: %w", err)
+	}
+
+	if !rows.Next() {
+		rows.Close() // Close rows before executing new query
+		// Note: removed single quotes around database name for better SQL compliance
+		query = fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", databaseName)
+		if _, err := db.Exec(query); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("failed to create database: %v", err)
+		}
+		fmt.Println("Database created successfully")
+	} else {
+		rows.Close()
+	}
+
+	// Use the created database
+	if _, err := db.Exec("USE sensor_data_db"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to select database: %v", err)
+	}
+
+	fmt.Println("Connected to MySQL and selected DB")
+	return &MySQLData{DB: db}, nil
+}
+
+// Close closes the database connection
+func (c *MySQLData) Close() {
+	if c.DB != nil {
+		c.DB.Close()
+	}
+}
+
+func (c *MySQLData) RawMySQLData() {
+	// Create table if it doesn't exist
+	tableName := "sensor_data"
+	query := fmt.Sprintf("SHOW TABLES LIKE '%s'", tableName)
+	rows, err := c.DB.Query(query)
+	if err != nil {
+		fmt.Printf("show table query failed: %v\n", err)
+		return
+	}
+
+	tableExists := rows.Next()
+	rows.Close()
+
+	if !tableExists {
+		var tableQuery = `CREATE TABLE sensor_data (
+			recorded BIGINT,
+			location VARCHAR(255),
+			sensor VARCHAR(255),
+			measurement VARCHAR(255),
+			units VARCHAR(255),
+			value DECIMAL(10, 2)
+		);`
+		if _, err := c.DB.Exec(tableQuery); err != nil {
+			fmt.Printf("failed to create table: %v\n", err)
+			return
+		}
+		fmt.Println("Table created successfully")
+	}
+
+	// Unmarshal JSON data into SensorDataMySQL struct
+	var sensorDataMySQL SensorDataMySQL
+	if err := json.Unmarshal([]byte(getRandomSensorDataJsonString()), &sensorDataMySQL); err != nil {
+		fmt.Printf("failed to parse JSON: %v\n", err)
+		return
+	}
+	fmt.Println("JSON string converted to SensorDataMySQL struct")
+
+	// Prepare the SQL statement for inserting sensor data
+	query = `INSERT INTO sensor_data (recorded, location, sensor, measurement, units, value)
+		VALUES (?, ?, ?, ?, ?, ?)`
+
+	// Execute the insert statement
+	_, err = c.DB.Exec(query,
+		sensorDataMySQL.Recorded,
+		sensorDataMySQL.Location,
+		sensorDataMySQL.Sensor,
+		sensorDataMySQL.Measurement,
+		sensorDataMySQL.Units,
+		sensorDataMySQL.Value)
+	if err != nil {
+		fmt.Printf("failed to insert data: %v\n", err)
+		return
+	}
+	fmt.Println("SensorDataMySQL stored")
+
+	// Query all rows from the sensor_data table
+	var results []string
+	rows, err = c.DB.Query(`SELECT recorded, location, sensor, measurement, units, value FROM sensor_data`)
+	if err != nil {
+		fmt.Printf("failed to query data: %v\n", err)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var sensorDataMySQL SensorDataMySQL
+		err := rows.Scan(
+			&sensorDataMySQL.Recorded,
+			&sensorDataMySQL.Location,
+			&sensorDataMySQL.Sensor,
+			&sensorDataMySQL.Measurement,
+			&sensorDataMySQL.Units,
+			&sensorDataMySQL.Value,
+		)
+		if err != nil {
+			fmt.Printf("failed to scan row: %v\n", err)
+			continue
+		}
+
+		jsonBytes, err := json.Marshal(sensorDataMySQL)
+		if err != nil {
+			fmt.Printf("failed to marshal SensorDataMySQL to JSON String: %v\n", err)
+			continue
+		}
+		results = append(results, string(jsonBytes))
+	}
+
+	if len(results) > 0 {
+		data := []string{"[" + strings.Join(results, ",") + "]"}
+		csvString, err := jsonToCSV(strings.Join(data, "\n"))
+		if err != nil {
+			fmt.Println(err)
+		} else {
+			fmt.Printf("%s\n%s", "SensorDataMySQL retrieved", csvString)
+		}
+	}
+
+	// Prepare the SQL statement to delete all records from the sensor_data table
+	_, err = c.DB.Exec("DELETE FROM sensor_data")
+	if err != nil {
+		fmt.Printf("Failed to delete data: %v\n", err)
+		return
+	}
+	fmt.Println("SensorDataMySQL purged")
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/data/database/postgres_data.go
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package database
+
+import (
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
+)
+
+type SensorDataPostgres struct {
+	Recorded    int64   `postgres:"recorded"`
+	Location    string  `postgres:"location"`
+	Sensor      string  `postgres:"sensor"`
+	Measurement string  `postgres:"measurement"`
+	Units       string  `postgres:"units"`
+	Value       float64 `postgres:"value"`
+}
+
+// PostgresData struct for Postgres
+type PostgresData struct {
+	DB *sql.DB
+}
+
+// NewPostgresData creates a new PostgresData instance and connects
+func NewPostgresData() (*PostgresData, error) {
+	// 1. Connect to default 'postgres' database to check/create target DB
+	db, err := sql.Open("pgx", "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable")
+	if err != nil {
+		return nil, fmt.Errorf("failed to open default database: %w", err)
+	}
+
+	databaseName := "sensor_data_db"
+	query := fmt.Sprintf("SELECT 1 FROM pg_database WHERE datname = '%s'", databaseName)
+	var exists int
+
+	err = db.QueryRow(query).Scan(&exists)
+	if err != nil && err != sql.ErrNoRows {
+		db.Close()
+		return nil, fmt.Errorf("failed to check for database existence: %w", err)
+	}
+
+	if exists == 0 {
+		_, err = db.Exec(`CREATE DATABASE sensor_data_db;`)
+		if err != nil {
+			db.Close()
+			return nil, fmt.Errorf("failed to create database 'sensor_data_db': %w", err)
+		}
+		fmt.Println("Database created successfully!")
+	}
+	db.Close()
+
+	// 2. Connect to the specific 'sensor_data_db'
+	targetDB, err := sql.Open("pgx", "postgres://postgres:postgres@localhost:5432/sensor_data_db?sslmode=disable")
+	if err != nil {
+		return nil, fmt.Errorf("failed to open target database: %w", err)
+	}
+
+	fmt.Println("Connected to Postgres")
+	return &PostgresData{DB: targetDB}, nil
+}
+
+// Close closes the database connection
+func (c *PostgresData) Close() {
+	if c.DB != nil {
+		c.DB.Close()
+	}
+}
+
+func (c *PostgresData) RawPostgresData() {
+	// Create the sensor_data table if it doesn't exist.
+	var exists int
+	err := c.DB.QueryRow(`SELECT 1 FROM pg_tables WHERE tablename = 'sensor_data'`).Scan(&exists)
+	if err != nil && err != sql.ErrNoRows {
+		fmt.Printf("Failed to check for table existence: %v\n", err)
+		return
+	}
+
+	if exists == 0 {
+		_, err = c.DB.Exec(`
+		CREATE TABLE IF NOT EXISTS sensor_data (
+			recorded BIGINT NOT NULL,
+			location VARCHAR(255) NOT NULL,
+			sensor VARCHAR(255) NOT NULL,
+			measurement VARCHAR(255) NOT NULL,
+			units VARCHAR(255) NOT NULL,
+			value NUMERIC(10, 2) NOT NULL
+		);`)
+		if err != nil {
+			fmt.Printf("failed to create sensor_data table: %v\n", err)
+			return
+		}
+		fmt.Println("Table created successfully!")
+	}
+
+	// Unmarshal JSON string into SensorDataPostgres struct
+	var sensorDataPostgres SensorDataPostgres
+	if err := json.Unmarshal([]byte(getRandomSensorDataJsonString()), &sensorDataPostgres); err != nil {
+		fmt.Printf("Failed to parse json: %v\n", err)
+		return
+	}
+	fmt.Println("JSON string converted to SensorDataPostgres struct")
+
+	// Prepare the SQL statement for inserting sensor data
+	var query = `INSERT INTO sensor_data (recorded, location, sensor, measurement, units, value)
+		VALUES ($1, $2, $3, $4, $5, $6)`
+
+	// Execute the insert statement
+	_, err = c.DB.Exec(query,
+		sensorDataPostgres.Recorded,
+		sensorDataPostgres.Location,
+		sensorDataPostgres.Sensor,
+		sensorDataPostgres.Measurement,
+		sensorDataPostgres.Units,
+		sensorDataPostgres.Value)
+	if err != nil {
+		fmt.Printf("Failed to insert data: %v\n", err)
+		return
+	}
+	fmt.Println("SensorDataPostgres stored")
+
+	// Query all rows from the sensor_data table
+	var results []string
+	rows, err := c.DB.Query(`SELECT recorded, location, sensor, measurement, units, value FROM sensor_data`)
+	if err != nil {
+		fmt.Printf("failed to query data: %v\n", err)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var sensorDataPostgres SensorDataPostgres
+		err := rows.Scan(
+			&sensorDataPostgres.Recorded,
+			&sensorDataPostgres.Location,
+			&sensorDataPostgres.Sensor,
+			&sensorDataPostgres.Measurement,
+			&sensorDataPostgres.Units,
+			&sensorDataPostgres.Value,
+		)
+		if err != nil {
+			fmt.Printf("failed to scan row: %v\n", err)
+			continue
+		}
+
+		jsonBytes, err := json.Marshal(sensorDataPostgres)
+		if err != nil {
+			fmt.Printf("failed to marshal row to JSON: %v\n", err)
+			continue
+		}
+		results = append(results, string(jsonBytes))
+	}
+
+	if len(results) > 0 {
+		data := []string{"[" + strings.Join(results, ",") + "]"}
+		csvString, err := jsonToCSV(strings.Join(data, "\n"))
+		if err != nil {
+			fmt.Println(err)
+		} else {
+			fmt.Printf("%s\n%s", "SensorDataPostgres retrieved", csvString)
+		}
+	}
+
+	// Delete all records
+	_, err = c.DB.Exec("DELETE FROM sensor_data")
+	if err != nil {
+		fmt.Printf("Failed to delete data: %v\n", err)
+		return
+	}
+	fmt.Println("SensorDataPostgres purged")
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/data/database/redis_data.go
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package database
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/redis/go-redis/v9"
+	"github.com/redis/go-redis/v9/maintnotifications"
+)
+
+// RedisData struct for Redis
+type RedisData struct {
+	Client *redis.Client
+}
+
+// NewRedisData creates a new RedisData instance
+func NewRedisData() *RedisData {
+	// Initialize Redis client
+	client := redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "",
+		DB:       0,
+		MaintNotificationsConfig: &maintnotifications.Config{
+			Mode: maintnotifications.ModeDisabled,
+		},
+	})
+
+	// Note: redis.NewClient doesn't actually connect until a command is run,
+	// but strictly speaking the 'connection object' is created here.
+	return &RedisData{Client: client}
+}
+
+// Close closes the Redis client
+func (c *RedisData) Close() {
+	if c.Client != nil {
+		c.Client.Close()
+	}
+}
+
+func (c *RedisData) RawRedisData() {
+	ctx := context.Background()
+	key := "sensor_data:readings"
+
+	// Use RPush to append the JSON string to the list
+	if err := c.Client.RPush(ctx, key, getRandomSensorDataJsonString()).Err(); err != nil {
+		fmt.Printf("failed to rpush to Redis: %v\n", err)
+		return
+	}
+	fmt.Println("Successfully rpushed data to Redis")
+
+	// Use LRange to retrieve the list of JSON strings
+	values, err := c.Client.LRange(ctx, key, 0, -1).Result()
+	if err != nil {
+		fmt.Printf("failed to lrange from Redis: %v\n", err)
+		return
+	}
+
+	// Join results with commas to form a valid JSON array
+	if len(values) > 0 {
+		data := []string{"[" + strings.Join(values, ",") + "]"}
+		// Convert JSON array to CSV string
+		csvString, err := jsonToCSV(strings.Join(data, "\n"))
+		if err != nil {
+			fmt.Println(err)
+		} else {
+			fmt.Printf("%s\n%s", "Successfully lranged data from Redis", csvString)
+		}
+	}
+
+	// Delete the key
+	if err := c.Client.Del(context.Background(), key).Err(); err != nil {
+		fmt.Printf("failed to delete key from Redis: %v\n", err)
+		return
+	}
+	fmt.Println("Successfully deleted key from Redis")
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/data/database/sensor_data_helper.go
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package database
+
+import (
+	"bytes"
+	"encoding/csv"
+	"encoding/json"
+	"fmt"
+	"math"
+	"math/rand"
+	"sort"
+	"strconv"
+	"time"
+)
+
+// JSON String Literal
+const SENSOR_DATA_JSON_STRING = `{
+	"recorded": 1768237200,
+	"location": "den",
+	"sensor": "bmp280",
+	"measurement": "temperature",
+	"units": "C",
+	"value": 22.3
+}`
+
+// JSON Object Helper Function
+func GetSensorDataJsonObject() map[string]interface{} {
+	var data map[string]interface{}
+	err := json.Unmarshal([]byte(SENSOR_DATA_JSON_STRING), &data)
+	if err != nil {
+		fmt.Printf("Error unmarshalling SENSOR_DATA_JSON_STRING: %v\n", err)
+		return nil
+	}
+	return data
+}
+
+// JSON Array Helper Function
+func GetSensorDataJsonArray() []interface{} {
+	jsonArrayString := "[" + SENSOR_DATA_JSON_STRING + "]"
+	var data []interface{}
+	err := json.Unmarshal([]byte(jsonArrayString), &data)
+	if err != nil {
+		fmt.Printf("Error unmarshalling JSON array string: %v\n", err)
+		return nil
+	}
+	return data
+}
+
+// Create a new map to hold the sensor data with random values for keys recorded and value
+func getRandomSensorDataJsonString() []byte {
+	// Create a new map to hold the sensor data
+	var sensorData = GetSensorDataJsonObject()
+
+	// Generate a random seed to use for generating random values
+	// Note: rand.Seed is deprecated in newer Go versions (1.20+) as global random is seeded automatically,
+	// but kept here for compatibility with older environments if needed.
+	rand.Seed(time.Now().UnixNano())
+	sensorData["recorded"] = time.Now().Unix()
+	var value float64 = 22.4 + rand.Float64()*(32.1-22.4)
+	value = math.Round(value*float64(math.Pow10(1))) / float64(math.Pow10(1))
+	sensorData["value"] = value
+
+	// Convert the map to a byte slice using json.Marshal
+	b, _ := json.Marshal(sensorData)
+
+	return b
+}
+
+// removeKeyValuePair removes a key-value pair from a map
+func removeKeyValuePair(mapVar map[string]string, keyToRemove string) {
+	if _, ok := mapVar[keyToRemove]; ok {
+		delete(mapVar, keyToRemove)
+	}
+}
+
+// jsonToCSV converts a JSON string to a CSV string
+func jsonToCSV(jsonData string) (string, error) {
+
+	// Parse the JSON String Literal into a JSON Object (or Map)
+	var records []map[string]interface{}
+	if err := json.Unmarshal([]byte(jsonData), &records); err != nil {
+		return "", fmt.Errorf("failed to unmarshal json for csv: %w", err)
+	}
+	if len(records) == 0 {
+		return "", fmt.Errorf("no records found for csv")
+	}
+
+	// Collect all unique keys from the map for the header
+	headerMap := make(map[string]struct{})
+	for _, rec := range records {
+		for k := range rec {
+			headerMap[k] = struct{}{}
+		}
+	}
+
+	// Sort headers for consistent order
+	headers := make([]string, 0, len(headerMap))
+	for k := range headerMap {
+		headers = append(headers, k)
+	}
+	sort.Strings(headers)
+
+	// Create a CSV writer using a bytes.Buffer
+	var buf bytes.Buffer
+	writer := csv.NewWriter(&buf)
+	if err := writer.Write(headers); err != nil {
+		return "", fmt.Errorf("failed to write csv headers: %w", err)
+	}
+
+	// Write each record
+	for _, rec := range records {
+		row := make([]string, len(headers))
+		for i, h := range headers {
+			if v, ok := rec[h]; ok && v != nil {
+				// Handle each value based on its type
+				switch val := v.(type) {
+				case float64:
+					row[i] = strconv.FormatFloat(val, 'f', -1, 64)
+				case int, int64, int32:
+					row[i] = fmt.Sprintf("%d", val)
+				default:
+					row[i] = fmt.Sprintf("%v", val)
+				}
+			} else {
+				row[i] = ""
+			}
+		}
+		if err := writer.Write(row); err != nil {
+			return "", fmt.Errorf("failed to write csv row: %w", err)
+		}
+	}
+
+	// Flush the writer to ensure all data is written to the buffer
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		return "", fmt.Errorf("writer flush error: %w", err)
+	}
+
+	// Return the CSV string from the buffer
+	return buf.String(), nil
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/go/data/main.go
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package main
+
+import (
+	"fmt"
+	"log"
+	"strings"
+
+	// Import the package where the other files reside.
+	// If you named your module something else in 'go mod init', update this path.
+	"go-ai-data/database"
+)
+
+func main() {
+	fmt.Println("Starting Database Operations...")
+
+	// 1. Cassandra
+	printSeparator("Cassandra")
+	if cass, err := database.NewCassandraData(); err != nil {
+		log.Printf("Skipping Cassandra due to initialization error: %v\n", err)
+	} else {
+		// Ensure connection is closed when function exits (or explicitly here)
+		// We use a func literal or explicit block to control scope if we want immediate cleanup
+		func() {
+			defer cass.Close()
+			cass.RawCassandraData()
+		}()
+	}
+
+	// 2. MongoDB
+	printSeparator("MongoDB")
+	if mongo, err := database.NewMongoData(); err != nil {
+		log.Printf("Skipping MongoDB due to initialization error: %v\n", err)
+	} else {
+		func() {
+			defer mongo.Close()
+			mongo.RawMongoData()
+		}()
+	}
+
+	// 3. Redis
+	printSeparator("Redis")
+	// Note: NewRedisData (in our refactor) does not return an error
+	redis := database.NewRedisData()
+	func() {
+		defer redis.Close()
+		redis.RawRedisData()
+	}()
+
+	// 4. Postgres
+	printSeparator("Postgres")
+	if pg, err := database.NewPostgresData(); err != nil {
+		log.Printf("Skipping Postgres due to initialization error: %v\n", err)
+	} else {
+		func() {
+			defer pg.Close()
+			pg.RawPostgresData()
+		}()
+	}
+
+	// 5. MySQL
+	printSeparator("MySQL")
+	if mysql, err := database.NewMySQLData(); err != nil {
+		log.Printf("Skipping MySQL due to initialization error: %v\n", err)
+	} else {
+		func() {
+			defer mysql.Close()
+			mysql.RawMySQLData()
+		}()
+	}
+
+	printSeparator("Done")
+	fmt.Println("All database operations completed.")
+}
+
+func printSeparator(name string) {
+	fmt.Println("\n" + strings.Repeat("-", 60))
+	fmt.Printf(">>> EXECUTING %s <<<\n", strings.ToUpper(name))
+	fmt.Println(strings.Repeat("-", 60))
+}
+
+
+

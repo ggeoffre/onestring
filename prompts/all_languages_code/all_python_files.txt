@@ -1,0 +1,2377 @@
+========================================
+PROJECT: django-app
+PATH: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/legos/django-app
+========================================
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/legos/django-app/app.py
+----------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+import json
+import os
+import sys
+
+import sensor_data_helper
+from django.conf import settings
+from django.core.management import execute_from_command_line
+from django.http import HttpResponse, JsonResponse
+from django.urls import path, re_path
+from mongo_data_access import MongoDataAccess
+from mysql_data_access import MySQLDataAccess
+from postgres_data_access import PostgresDataAccess
+from redis_data_access import RedisDataAccess
+from sensor_data_access_protocol import SensorDataAccess
+
+
+def get_data_access() -> SensorDataAccess:
+    data_access_type = os.getenv("DATA_ACCESS", "mongo")
+
+    if data_access_type == "redis":
+        return RedisDataAccess()
+    elif data_access_type == "mongo":
+        return MongoDataAccess()
+    elif data_access_type == "cassandra":
+        return CassandraDataAccess()
+    elif data_access_type == "mysql":
+        return MySQLDataAccess()
+    elif data_access_type == "postgres":
+        return PostgresDataAccess()
+    else:
+        raise ValueError(f"Unsupported DATA_ACCESS type: {data_access_type}")
+
+
+# Configure Django settings
+settings.configure(
+    DEBUG=True,
+    APPEND_SLASH=True,
+    SECRET_KEY="your-secret-key",
+    ROOT_URLCONF=__name__,
+    ALLOWED_HOSTS=["*"],
+    TEMPLATES=[
+        {
+            "BACKEND": "django.template.backends.django.DjangoTemplates",
+            "DIRS": [],
+        },
+    ],
+)
+
+
+# Views
+def home(request):
+    return JsonResponse({"message": "Django API Server is running!"})
+
+
+def echo_view(request):
+    if request.method == "GET":
+        return JsonResponse({"error": "GET requests are not allowed."}, status=405)
+    elif request.method == "POST":
+        data = json.loads(request.body)
+        return JsonResponse(data)
+
+
+def log_view(request):
+    if request.method == "GET":
+        return JsonResponse({"error": "GET requests are not allowed."}, status=405)
+    elif request.method == "POST":
+        data = json.loads(request.body)
+        if data is None:
+            return JsonResponse({"error": "No valid JSON provided"}), 400
+        data_access = get_data_access()
+        data_access.log_sensor_data(data)
+        return JsonResponse({"message": "Data logged successfully"})
+
+
+def report_view(request):
+    data_access = get_data_access()
+    data = data_access.fetch_sensor_data()
+    csv_data = sensor_data_helper.json_list_to_csv(data)
+    response = HttpResponse(csv_data, content_type="text/csv")
+    response["Content-Disposition"] = 'attachment; filename="report.csv"'
+    return response
+
+
+def purge_view(request):
+    if request.method in ["GET", "POST"]:
+        data_access = get_data_access()
+        data_access.purge_sensor_data()
+        return JsonResponse({"message": "Data purged."})
+
+
+# URL patterns
+urlpatterns = [
+    path("", home, name="home"),
+    re_path(r"^echo/?$", echo_view, name="echo"),
+    re_path(r"^log/?$", log_view, name="log"),
+    re_path(r"^report/?$", report_view, name="report"),
+    re_path(r"^purge/?$", purge_view, name="purge"),
+]
+
+# Run the app
+if __name__ == "__main__":
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", __name__)
+    execute_from_command_line(sys.argv)
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/legos/django-app/cassandra_data_access.py
+----------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+import os
+
+import sensor_data_helper
+from cassandra import DriverException
+from cassandra.cluster import Cluster, Session
+from sensor_data_access_protocol import SensorDataAccess
+
+# Configurations
+CASS_HOST = os.environ.get("DATA_HOSTNAME", "localhost").lower()
+CASS_PORT = 9042
+CASS_KEYSPACE = "sensor_data_db"
+CASS_TABLE = "sensor_data"
+
+TABLE_CREATION_CHECKED = False
+
+
+class CassandraDataAccess(SensorDataAccess):
+    """Cassandra implementation of SensorDataAccess."""
+
+    cluster = Cluster([CASS_HOST], port=CASS_PORT)
+
+    def get_connection(self) -> Session:
+        global TABLE_CREATION_CHECKED
+        try:
+            session = self.cluster.connect()
+            print(f"Connected to Cassandra at {CASS_HOST}:{CASS_PORT}")
+
+            if not TABLE_CREATION_CHECKED:
+                session.execute(f"""
+                    CREATE KEYSPACE IF NOT EXISTS {CASS_KEYSPACE}
+                    WITH REPLICATION = {{ 'class' : 'SimpleStrategy', 'replication_factor' : 1 }};
+                """)
+                session.set_keyspace(CASS_KEYSPACE)
+
+                session.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {CASS_TABLE} (
+                        recorded bigint,
+                        location text,
+                        sensor text,
+                        measurement text,
+                        units text,
+                        value double,
+                        PRIMARY KEY ((location), recorded, sensor)
+                    );
+                """)
+                TABLE_CREATION_CHECKED = True
+            else:
+                session.set_keyspace(CASS_KEYSPACE)
+            return session
+        except Exception as e:
+            print(f"Error creating table: {e}")
+            return None
+
+    def close_connection(self):
+        try:
+            self.cluster.shutdown()
+        except Exception as e:
+            print(f"Error closing connection: {e}")
+
+    def log_sensor_data(self, json_data: str) -> None:
+        try:
+            session = self.get_connection()
+            insert_query = f"""
+                INSERT INTO {CASS_TABLE} (recorded, location, sensor, measurement, units, value)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """
+            session.execute(
+                insert_query, sensor_data_helper.create_insert_data_tuple(json_data)
+            )
+            print("Data stored successfully")
+        except Exception as e:
+            print(f"Error storing data: {e}")
+        return None
+
+    def fetch_sensor_data(self) -> list[str]:
+        try:
+            session = self.get_connection()
+            rows = session.execute(f"SELECT * FROM {CASS_TABLE}")
+            results = [row._asdict() for row in rows]
+            if results:
+                print(f"Retrieved {len(results)} records")
+                print(results)
+                return results
+            else:
+                print("No data found")
+                return []
+        except Exception as e:
+            print(f"Error fetching data: {e}")
+            return []
+
+    def purge_sensor_data(self) -> None:
+        try:
+            session = self.get_connection()
+            session.execute(f"TRUNCATE {CASS_TABLE}")
+            print("Table truncated")
+            return None
+        except Exception as e:
+            print(f"Error purging data: {e}")
+            return None
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/legos/django-app/mongo_data_access.py
+----------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+import os
+
+import pymongo
+import sensor_data_helper
+from pymongo.typings import ClusterTime
+from sensor_data_access_protocol import SensorDataAccess
+
+# Configurations
+MONGO_HOST = os.environ.get("DATA_HOSTNAME", "localhost").lower()
+MONGO_PORT = 27017
+MONGO_DB = "sensor_data_db"
+MONGO_COLLECTION = "sensor_data"
+
+
+class MongoDataAccess(SensorDataAccess):
+    """MongoDB implementation of SensorDataAccess."""
+
+    def get_connection(self):
+        try:
+            client = pymongo.MongoClient(
+                f"mongodb://{MONGO_HOST}:{MONGO_PORT}/", serverSelectionTimeoutMS=5000
+            )
+            db = client[MONGO_DB]
+            collection = db[MONGO_COLLECTION]
+            client.admin.command("ping")  # Verify connection
+            print(f"Connected to Mongo at {MONGO_HOST}:{MONGO_PORT}")
+            return client, db, collection
+        except Exception as e:
+            print(f"Connection failed: {e}")
+            return None, None, None
+
+    def close_connection(self, client, db, collection):
+        try:
+            client.close()
+            print("MongoDB connection closed")
+        except Exception as e:
+            print(f"Failed to close MongoDB connection: {e}")
+
+    def log_sensor_data(self, json_data: str) -> None:
+        try:
+            client, db, collection = self.get_connection()
+            collection.insert_one(json_data)
+            print("Record stored successfully")
+        except Exception as e:
+            print(f"Storage error: {e}")
+        return None
+
+    def fetch_sensor_data(self) -> list[str]:
+        try:
+            client, db, collection = self.get_connection()
+            cursor = collection.find({}, {"_id": 0})
+            results = list(cursor)
+            if results:
+                print(f"Retrieved {len(results)} records")
+            else:
+                print("No matching records found")
+            return results
+        except Exception as e:
+            print(f"Fetch error: {e}")
+            return []
+
+    def purge_sensor_data(self) -> None:
+        try:
+            client, db, collection = self.get_connection()
+            collection.delete_many({})
+            print("Sensor data purged from MongoDB")
+        except Exception as e:
+            print(f"Purge error: {e}")
+        return None
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/legos/django-app/mysql_data_access.py
+----------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+import os
+
+import pymysql
+import pymysql.cursors
+import sensor_data_helper
+from sensor_data_access_protocol import SensorDataAccess
+
+# Configurations
+MYSQL_HOST = os.environ.get("DATA_HOSTNAME", "localhost").lower()
+MYSQL_PORT = 3306
+MYSQL_DB = "sensor_data_db"
+MYSQL_TABLE = "sensor_data"
+MYSQL_USER = "root"
+MYSQL_PASS = ""
+
+TABLE_CREATION_CHECKED = False
+
+
+class MySQLDataAccess(SensorDataAccess):
+    """MySQL implementation of SensorDataAccess."""
+
+    connection = None
+
+    def _ensure_schema(self, connection):
+        global TABLE_CREATION_CHECKED
+        if TABLE_CREATION_CHECKED:
+            return
+        with connection.cursor() as cursor:
+            cursor.execute(f"CREATE DATABASE IF NOT EXISTS {MYSQL_DB};")
+            connection.select_db(MYSQL_DB)
+            cursor.execute(f"""
+                CREATE TABLE IF NOT EXISTS {MYSQL_TABLE} (
+                    recorded BIGINT NOT NULL,
+                    location VARCHAR(255) NOT NULL,
+                    sensor VARCHAR(255) NOT NULL,
+                    measurement VARCHAR(255) NOT NULL,
+                    units VARCHAR(10) NOT NULL,
+                    value DECIMAL(5,2) NOT NULL
+                );
+            """)
+        TABLE_CREATION_CHECKED = True
+
+    def get_cursor(self) -> tuple:
+        try:
+            connection = pymysql.connect(
+                host=MYSQL_HOST,
+                port=MYSQL_PORT,
+                user=MYSQL_USER,
+                password=MYSQL_PASS,
+                autocommit=True,
+            )
+            self._ensure_schema(connection)
+            connection.select_db(MYSQL_DB)
+            return connection, connection.cursor()
+        except Exception as ex:
+            print(f"Database error: {ex}")
+            raise
+
+    def log_sensor_data(self, json_data: str) -> None:
+        try:
+            connection, cursor = self.get_cursor()
+            data_tuple = sensor_data_helper.create_insert_data_tuple(json_data)
+            insert_sql = f"INSERT INTO {MYSQL_TABLE} VALUES (%s, %s, %s, %s, %s, %s)"
+            cursor.execute(insert_sql, data_tuple)
+            print("Data stored successfully")
+        except Exception as ex:
+            print(f"Database error: {ex}")
+        return None
+
+    def fetch_sensor_data(self) -> list[str]:
+        try:
+            connection, cursor = self.get_cursor()
+            with connection.cursor(pymysql.cursors.DictCursor) as dict_cursor:
+                dict_cursor.execute(f"SELECT * FROM {MYSQL_TABLE}")
+                results = dict_cursor.fetchall()
+                for row in results:
+                    row["value"] = float(row["value"])
+                if results:
+                    print(f"Retrieved {len(results)} records")
+                    print(results)
+                    return results
+        except Exception as ex:
+            print(f"Database error: {ex}")
+        return []
+
+    def purge_sensor_data(self) -> None:
+        try:
+            connection, cursor = self.get_cursor()
+            cursor.execute(f"TRUNCATE TABLE {MYSQL_TABLE}")
+            print("Table truncated")
+        except pymysql.MySQLError as e:
+            print(f"Error purging data: {e}")
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/legos/django-app/postgres_data_access.py
+----------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+import os
+
+import psycopg2
+import sensor_data_helper
+from psycopg2.extras import RealDictCursor
+from sensor_data_access_protocol import SensorDataAccess
+
+POSTGRES_HOST = os.environ.get("DATA_HOSTNAME", "localhost").lower()
+POSTGRES_PORT = 5432
+POSTGRES_DB = "sensor_data_db"
+POSTGRES_TABLE = "sensor_data"
+POSTGRES_USER = "postgres"
+POSTGRES_PASS = ""
+
+TABLE_CREATION_CHECKED = False
+
+
+class PostgresDataAccess(SensorDataAccess):
+    """PostgreSQL implementation of SensorDataAccess."""
+
+    connection = None
+
+    def _ensure_schema(self):
+        global TABLE_CREATION_CHECKED
+        if TABLE_CREATION_CHECKED:
+            return
+
+        try:
+            # 1. Connect to default 'postgres' db to check/create the target DB
+            admin_conn = psycopg2.connect(
+                host=POSTGRES_HOST,
+                port=POSTGRES_PORT,
+                database="postgres",
+                user=POSTGRES_USER,
+                password=POSTGRES_PASS,
+            )
+            admin_conn.autocommit = True
+            with admin_conn.cursor() as cur:
+                cur.execute(
+                    "SELECT 1 FROM pg_database WHERE datname = %s", (POSTGRES_DB,)
+                )
+                if not cur.fetchone():
+                    cur.execute(f"CREATE DATABASE {POSTGRES_DB}")
+            admin_conn.close()
+
+            # 2. Connect to the NEWLY CREATED/EXISTING target DB to create the table
+            target_conn = psycopg2.connect(
+                host=POSTGRES_HOST,
+                port=POSTGRES_PORT,
+                database=POSTGRES_DB,
+                user=POSTGRES_USER,
+                password=POSTGRES_PASS,
+            )
+            target_conn.autocommit = True
+            with target_conn.cursor() as cur:
+                cur.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {POSTGRES_TABLE} (
+                        recorded BIGINT NOT NULL,
+                        location VARCHAR(255) NOT NULL,
+                        sensor VARCHAR(255) NOT NULL,
+                        measurement VARCHAR(255) NOT NULL,
+                        units VARCHAR(255) NOT NULL,
+                        value NUMERIC(10, 2) NOT NULL
+                    );
+                """)
+            target_conn.close()
+
+            TABLE_CREATION_CHECKED = True
+        except Exception as e:
+            print(f"Schema Setup Error: {e}")
+
+    def get_cursor(self) -> tuple:
+        # Call schema check BEFORE attempting regular connection
+        self._ensure_schema()
+
+        try:
+            connection = psycopg2.connect(
+                host=POSTGRES_HOST,
+                port=POSTGRES_PORT,
+                database=POSTGRES_DB,
+                user=POSTGRES_USER,
+                password=POSTGRES_PASS,
+            )
+            connection.autocommit = True
+            return connection, connection.cursor()
+        except Exception as e:
+            print(f"Error getting cursor: {e}")
+            raise
+
+    def log_sensor_data(self, json_data: str) -> None:
+        try:
+            connection, cursor = self.get_cursor()
+            data_tuple = sensor_data_helper.create_insert_data_tuple(json_data)
+            cursor.execute(
+                f"""
+                INSERT INTO {POSTGRES_TABLE} (recorded, location, sensor, measurement, units, value)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """,
+                data_tuple,
+            )
+            print("Data stored successfully")
+        except Exception as e:
+            print(f"Error storing data: {e}")
+        return None
+
+    def fetch_sensor_data(self) -> list[str]:
+        try:
+            connection, cursor = self.get_cursor()
+            with connection.cursor(cursor_factory=RealDictCursor) as dict_cursor:
+                dict_cursor.execute(f"SELECT * FROM {POSTGRES_TABLE}")
+                raw_results = dict_cursor.fetchall()
+                results = []
+                for row in raw_results:
+                    clean_row = dict(row)
+                    clean_row["value"] = float(clean_row["value"])
+                    results.append(clean_row)
+                if results:
+                    print(f"Retrieved {len(results)} records")
+                    print(results)
+                    return results
+                else:
+                    print("No records found")
+        except Exception as e:
+            print(f"Error fetching data: {e}")
+        return []
+
+    def purge_sensor_data(self) -> None:
+        try:
+            connection, cursor = self.get_cursor()
+            cursor.execute(f"TRUNCATE TABLE {POSTGRES_TABLE}")
+            print("Table truncated")
+        except Exception as e:
+            print(f"Error purging data: {e}")
+        return None
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/legos/django-app/redis_data_access.py
+----------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+import json
+import os
+
+import redis
+import sensor_data_helper
+from sensor_data_access_protocol import SensorDataAccess
+
+REDIS_HOST = os.environ.get("DATA_HOSTNAME", "localhost").lower()
+REDIS_PORT = 6379
+REDIS_KEY_BASE = "location:den:list"
+
+
+class RedisDataAccess(SensorDataAccess):
+    """Redis implementation of SensorDataAccess."""
+
+    def get_connection(self) -> redis.StrictRedis:
+        try:
+            redis_client = redis.StrictRedis(
+                host=REDIS_HOST,
+                port=REDIS_PORT,
+                decode_responses=True,
+                socket_timeout=5,  # Prevent hanging if Redis is down
+            )
+            redis_client.ping()
+            print(f"Connected to Redis at {REDIS_HOST}:{REDIS_PORT}")
+            return redis_client
+        except redis.ConnectionError as e:
+            print(f"Could not connect to Redis: {e}")
+            raise
+
+    def log_sensor_data(self, json_data: str) -> None:
+        try:
+            redis_client = self.get_connection()
+            json_string = json.dumps(json_data, default=sensor_data_helper.json_default)
+            redis_client.rpush(REDIS_KEY_BASE, json_string)
+            print("Data stored successfully")
+        except Exception as e:
+            print(f"Error storing data: {e}")
+
+    def fetch_sensor_data(self) -> list[str]:
+        try:
+            redis_client = self.get_connection()
+            raw_results = redis_client.lrange(REDIS_KEY_BASE, 0, -1)
+            if raw_results:
+                results = [json.loads(item) for item in raw_results]
+                print(f"Retrieved {len(results)} records")
+                print(results)
+                return results
+            else:
+                print("No data found in Redis")
+                return []
+        except Exception as e:
+            print(f"Error retrieving data: {e}")
+            return []
+
+    def purge_sensor_data(self) -> None:
+        try:
+            redis_client = self.get_connection()
+            redis_client.delete(REDIS_KEY_BASE)
+            print("Key deleted")
+        except Exception as e:
+            print(f"Error purging data: {e}")
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/legos/django-app/sensor_data_access_protocol.py
+----------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+from abc import ABC, abstractmethod
+from typing import List
+
+
+class SensorDataAccess(ABC):
+    """Abstract base class for sensor data access."""
+
+    @abstractmethod
+    def log_sensor_data(self, json_data: str) -> None:
+        """Log sensor data."""
+        pass
+
+    @abstractmethod
+    def fetch_sensor_data(self) -> List[str]:
+        """Fetch sensor data."""
+        pass
+
+    @abstractmethod
+    def purge_sensor_data(self) -> None:
+        """Purge sensor data."""
+        pass
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/legos/django-app/sensor_data_helper.py
+----------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+import datetime
+import decimal
+import json
+import random
+import time
+
+# Constants for sensor data generation
+sample_timestamp = 1768570200
+sample_location = "den"
+sample_sensor = "bmp280"
+sample_measurement = "temperature"
+sample_units = "C"
+sample_value = 22.3
+
+# Temperature range for random data generation
+min_temperature = 22.4
+max_temperature = 32.1
+temperature_precision = 1
+
+# Sensor data defaults
+sensor_data = {
+    "recorded": sample_timestamp,
+    "location": sample_location,
+    "sensor": sample_sensor,
+    "measurement": sample_measurement,
+    "units": sample_units,
+    "value": sample_value,
+}
+
+# Sensor data string and dictionary
+sensor_data_string = json.dumps(sensor_data)
+sensor_data_dict = json.loads(sensor_data_string)
+
+
+def generate_random_sensor_data():
+    data = sensor_data.copy()
+    data["recorded"] = int(time.time())
+    data["value"] = round(
+        random.uniform(min_temperature, max_temperature), temperature_precision
+    )
+    return data
+
+
+def create_insert_data_tuple(data):
+    """Prepares a tuple for SQL/CQL insertion."""
+    if not isinstance(data, dict):
+        raise TypeError("Input must be a dictionary")
+
+    # Return directly; no unreachable returns after raise
+    return (
+        int(data.get("recorded", 0)),
+        data.get("location"),
+        data.get("sensor"),
+        data.get("measurement"),
+        data.get("units"),
+        float(data.get("value", 0.0)),
+    )
+
+
+def json_default(obj):
+    """Handles non-standard JSON types."""
+    if isinstance(obj, decimal.Decimal):
+        return float(obj)
+    if isinstance(obj, (datetime.datetime, datetime.date)):
+        return obj.isoformat()
+    if isinstance(obj, ObjectId):
+        return str(obj)
+    raise TypeError(f"Object of type {obj.__class__.__name__} is not serializable")
+
+
+def json_list_to_csv(json_string_list):
+    headers = list(json_string_list[0].keys())
+    csv_lines = [",".join(headers)]
+
+    for item in json_string_list:
+        row = []
+        for key in headers:
+            val = str(item.get(key, ""))
+            val = val.replace('"', '""')
+            if "," in val or '"' in val:
+                val = f'"{val}"'
+            row.append(val)
+        csv_lines.append(",".join(row))
+
+    return "\n".join(csv_lines)
+
+
+
+========================================
+PROJECT: flask-app
+PATH: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/legos/flask-app
+========================================
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/legos/flask-app/app.py
+----------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+import os
+
+import sensor_data_helper
+from cassandra_data_access import CassandraDataAccess
+from flask import Flask, Response, jsonify, request
+from mongo_data_access import MongoDataAccess
+from mysql_data_access import MySQLDataAccess
+from postgres_data_access import PostgresDataAccess
+from redis_data_access import RedisDataAccess
+from sensor_data_access_protocol import SensorDataAccess
+
+
+def get_data_access() -> SensorDataAccess:
+    data_access_type = os.getenv("DATA_ACCESS", "mongo")
+
+    if data_access_type == "redis":
+        return RedisDataAccess()
+    elif data_access_type == "mongo":
+        return MongoDataAccess()
+    elif data_access_type == "cassandra":
+        return CassandraDataAccess()
+    elif data_access_type == "mysql":
+        return MySQLDataAccess()
+    elif data_access_type == "postgres":
+        return PostgresDataAccess()
+    else:
+        raise ValueError(f"Unsupported DATA_ACCESS type: {data_access_type}")
+
+
+app = Flask(__name__)
+
+
+@app.route("/", methods=["GET"])
+def root():
+    return jsonify({"message": "Flask API Server is running!"})
+
+
+@app.route("/echo", methods=["POST"])
+def echo():
+    data = request.get_json(force=True)
+    if data is None:
+        return jsonify({"error": "No valid JSON provided"}), 400
+    return jsonify(data)
+
+
+@app.route("/log", methods=["POST"])
+def log():
+    data_access = get_data_access()
+    data = request.get_json(force=True)
+    print(data)
+    data_access.log_sensor_data(data)
+    if data is None:
+        return jsonify({"error": "No valid JSON provided"}), 400
+    return jsonify({"message": "Data logged successfully"})
+
+
+@app.route("/report", methods=["GET"])
+def report():
+    try:
+        data_access = get_data_access()
+        data = data_access.fetch_sensor_data()
+        csv_data = sensor_data_helper.json_list_to_csv(data)
+        if not csv_data:
+            return jsonify({"error": "No data available"}), 404
+        return Response(
+            csv_data,
+            mimetype="text/csv",
+            headers={"Content-Disposition": "attachment; filename=sensor_report.csv"},
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/purge", methods=["GET", "POST"])
+def purge():
+    data_access = get_data_access()
+    data_access.purge_sensor_data()
+    return jsonify({"message": "Data purge sequence complete"})
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8080, debug=False)
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/legos/flask-app/cassandra_data_access.py
+----------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+import os
+
+import sensor_data_helper
+from cassandra import DriverException
+from cassandra.cluster import Cluster, Session
+from sensor_data_access_protocol import SensorDataAccess
+
+# Configurations
+CASS_HOST = os.environ.get("DATA_HOSTNAME", "localhost").lower()
+CASS_PORT = 9042
+CASS_KEYSPACE = "sensor_data_db"
+CASS_TABLE = "sensor_data"
+
+TABLE_CREATION_CHECKED = False
+
+
+class CassandraDataAccess(SensorDataAccess):
+    """Cassandra implementation of SensorDataAccess."""
+
+    cluster = Cluster([CASS_HOST], port=CASS_PORT)
+
+    def get_connection(self) -> Session:
+        global TABLE_CREATION_CHECKED
+        try:
+            session = self.cluster.connect()
+            print(f"Connected to Cassandra at {CASS_HOST}:{CASS_PORT}")
+
+            if not TABLE_CREATION_CHECKED:
+                session.execute(f"""
+                    CREATE KEYSPACE IF NOT EXISTS {CASS_KEYSPACE}
+                    WITH REPLICATION = {{ 'class' : 'SimpleStrategy', 'replication_factor' : 1 }};
+                """)
+                session.set_keyspace(CASS_KEYSPACE)
+
+                session.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {CASS_TABLE} (
+                        recorded bigint,
+                        location text,
+                        sensor text,
+                        measurement text,
+                        units text,
+                        value double,
+                        PRIMARY KEY ((location), recorded, sensor)
+                    );
+                """)
+                TABLE_CREATION_CHECKED = True
+            else:
+                session.set_keyspace(CASS_KEYSPACE)
+            return session
+        except Exception as e:
+            print(f"Error creating table: {e}")
+            return None
+
+    def close_connection(self):
+        try:
+            self.cluster.shutdown()
+        except Exception as e:
+            print(f"Error closing connection: {e}")
+
+    def log_sensor_data(self, json_data: str) -> None:
+        try:
+            session = self.get_connection()
+            insert_query = f"""
+                INSERT INTO {CASS_TABLE} (recorded, location, sensor, measurement, units, value)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """
+            session.execute(
+                insert_query, sensor_data_helper.create_insert_data_tuple(json_data)
+            )
+            print("Data stored successfully")
+        except Exception as e:
+            print(f"Error storing data: {e}")
+        return None
+
+    def fetch_sensor_data(self) -> list[str]:
+        try:
+            session = self.get_connection()
+            rows = session.execute(f"SELECT * FROM {CASS_TABLE}")
+            results = [row._asdict() for row in rows]
+            if results:
+                print(f"Retrieved {len(results)} records")
+                print(results)
+                return results
+            else:
+                print("No data found")
+                return []
+        except Exception as e:
+            print(f"Error fetching data: {e}")
+            return []
+
+    def purge_sensor_data(self) -> None:
+        try:
+            session = self.get_connection()
+            session.execute(f"TRUNCATE {CASS_TABLE}")
+            print("Table truncated")
+            return None
+        except Exception as e:
+            print(f"Error purging data: {e}")
+            return None
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/legos/flask-app/mongo_data_access.py
+----------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+import os
+
+import pymongo
+import sensor_data_helper
+from pymongo.typings import ClusterTime
+from sensor_data_access_protocol import SensorDataAccess
+
+# Configurations
+MONGO_HOST = os.environ.get("DATA_HOSTNAME", "localhost").lower()
+MONGO_PORT = 27017
+MONGO_DB = "sensor_data_db"
+MONGO_COLLECTION = "sensor_data"
+
+
+class MongoDataAccess(SensorDataAccess):
+    """MongoDB implementation of SensorDataAccess."""
+
+    def get_connection(self) -> tuple:
+        try:
+            client = pymongo.MongoClient(
+                f"mongodb://{MONGO_HOST}:{MONGO_PORT}/", serverSelectionTimeoutMS=5000
+            )
+            db = client[MONGO_DB]
+            collection = db[MONGO_COLLECTION]
+            client.admin.command("ping")  # Verify connection
+            print(f"Connected to Mongo at {MONGO_HOST}:{MONGO_PORT}")
+            return client, db, collection
+        except Exception as e:
+            print(f"Connection failed: {e}")
+            return None, None, None
+
+    def close_connection(self, client, db, collection):
+        try:
+            client.close()
+            print("MongoDB connection closed")
+        except Exception as e:
+            print(f"Failed to close MongoDB connection: {e}")
+
+    def log_sensor_data(self, json_data: str) -> None:
+        try:
+            client, db, collection = self.get_connection()
+            collection.insert_one(json_data)
+            print("Record stored successfully")
+        except Exception as e:
+            print(f"Storage error: {e}")
+        return None
+
+    def fetch_sensor_data(self) -> list[str]:
+        try:
+            client, db, collection = self.get_connection()
+            cursor = collection.find({}, {"_id": 0})
+            results = list(cursor)
+            if results:
+                print(f"Retrieved {len(results)} records")
+            else:
+                print("No matching records found")
+            return results
+        except Exception as e:
+            print(f"Fetch error: {e}")
+            return []
+
+    def purge_sensor_data(self) -> None:
+        try:
+            client, db, collection = self.get_connection()
+            collection.delete_many({})
+            print("Sensor data purged from MongoDB")
+        except Exception as e:
+            print(f"Purge error: {e}")
+        return None
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/legos/flask-app/mysql_data_access.py
+----------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+import os
+
+import pymysql
+import pymysql.cursors
+import sensor_data_helper
+from sensor_data_access_protocol import SensorDataAccess
+
+# Configurations
+MYSQL_HOST = os.environ.get("DATA_HOSTNAME", "localhost").lower()
+MYSQL_PORT = 3306
+MYSQL_DB = "sensor_data_db"
+MYSQL_TABLE = "sensor_data"
+MYSQL_USER = "root"
+MYSQL_PASS = ""
+
+TABLE_CREATION_CHECKED = False
+
+
+class MySQLDataAccess(SensorDataAccess):
+    """MySQL implementation of SensorDataAccess."""
+
+    connection = None
+
+    def _ensure_schema(self, connection):
+        global TABLE_CREATION_CHECKED
+        if TABLE_CREATION_CHECKED:
+            return
+        with connection.cursor() as cursor:
+            cursor.execute(f"CREATE DATABASE IF NOT EXISTS {MYSQL_DB};")
+            connection.select_db(MYSQL_DB)
+            cursor.execute(f"""
+                CREATE TABLE IF NOT EXISTS {MYSQL_TABLE} (
+                    recorded BIGINT NOT NULL,
+                    location VARCHAR(255) NOT NULL,
+                    sensor VARCHAR(255) NOT NULL,
+                    measurement VARCHAR(255) NOT NULL,
+                    units VARCHAR(10) NOT NULL,
+                    value DECIMAL(5,2) NOT NULL
+                );
+            """)
+        TABLE_CREATION_CHECKED = True
+
+    def get_cursor(self) -> tuple:
+        try:
+            connection = pymysql.connect(
+                host=MYSQL_HOST,
+                port=MYSQL_PORT,
+                user=MYSQL_USER,
+                password=MYSQL_PASS,
+                autocommit=True,
+            )
+            self._ensure_schema(connection)
+            connection.select_db(MYSQL_DB)
+            return connection, connection.cursor()
+        except Exception as ex:
+            print(f"Database error: {ex}")
+            raise
+
+    def log_sensor_data(self, json_data: str) -> None:
+        try:
+            connection, cursor = self.get_cursor()
+            data_tuple = sensor_data_helper.create_insert_data_tuple(json_data)
+            insert_sql = f"INSERT INTO {MYSQL_TABLE} VALUES (%s, %s, %s, %s, %s, %s)"
+            cursor.execute(insert_sql, data_tuple)
+            print("Data stored successfully")
+        except Exception as ex:
+            print(f"Database error: {ex}")
+        return None
+
+    def fetch_sensor_data(self) -> list[str]:
+        try:
+            connection, cursor = self.get_cursor()
+            with connection.cursor(pymysql.cursors.DictCursor) as dict_cursor:
+                dict_cursor.execute(f"SELECT * FROM {MYSQL_TABLE}")
+                results = dict_cursor.fetchall()
+                for row in results:
+                    row["value"] = float(row["value"])
+                if results:
+                    print(f"Retrieved {len(results)} records")
+                    print(results)
+                    return results
+        except Exception as ex:
+            print(f"Database error: {ex}")
+        return []
+
+    def purge_sensor_data(self) -> None:
+        try:
+            connection, cursor = self.get_cursor()
+            cursor.execute(f"TRUNCATE TABLE {MYSQL_TABLE}")
+            print("Table truncated")
+        except pymysql.MySQLError as e:
+            print(f"Error purging data: {e}")
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/legos/flask-app/postgres_data_access.py
+----------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+import os
+
+import psycopg2
+import sensor_data_helper
+from psycopg2.extras import RealDictCursor
+from sensor_data_access_protocol import SensorDataAccess
+
+POSTGRES_HOST = os.environ.get("DATA_HOSTNAME", "localhost").lower()
+POSTGRES_PORT = 5432
+POSTGRES_DB = "sensor_data_db"
+POSTGRES_TABLE = "sensor_data"
+POSTGRES_USER = "postgres"
+POSTGRES_PASS = ""
+
+TABLE_CREATION_CHECKED = False
+
+
+class PostgresDataAccess(SensorDataAccess):
+    """PostgreSQL implementation of SensorDataAccess."""
+
+    connection = None
+
+    def _ensure_schema(self):
+        global TABLE_CREATION_CHECKED
+        if TABLE_CREATION_CHECKED:
+            return
+
+        try:
+            # 1. Connect to default 'postgres' db to check/create the target DB
+            admin_conn = psycopg2.connect(
+                host=POSTGRES_HOST,
+                port=POSTGRES_PORT,
+                database="postgres",
+                user=POSTGRES_USER,
+                password=POSTGRES_PASS,
+            )
+            admin_conn.autocommit = True
+            with admin_conn.cursor() as cur:
+                cur.execute(
+                    "SELECT 1 FROM pg_database WHERE datname = %s", (POSTGRES_DB,)
+                )
+                if not cur.fetchone():
+                    cur.execute(f"CREATE DATABASE {POSTGRES_DB}")
+            admin_conn.close()
+
+            # 2. Connect to the NEWLY CREATED/EXISTING target DB to create the table
+            target_conn = psycopg2.connect(
+                host=POSTGRES_HOST,
+                port=POSTGRES_PORT,
+                database=POSTGRES_DB,
+                user=POSTGRES_USER,
+                password=POSTGRES_PASS,
+            )
+            target_conn.autocommit = True
+            with target_conn.cursor() as cur:
+                cur.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {POSTGRES_TABLE} (
+                        recorded BIGINT NOT NULL,
+                        location VARCHAR(255) NOT NULL,
+                        sensor VARCHAR(255) NOT NULL,
+                        measurement VARCHAR(255) NOT NULL,
+                        units VARCHAR(255) NOT NULL,
+                        value NUMERIC(10, 2) NOT NULL
+                    );
+                """)
+            target_conn.close()
+
+            TABLE_CREATION_CHECKED = True
+        except Exception as e:
+            print(f"Schema Setup Error: {e}")
+
+    def get_cursor(self) -> tuple:
+        # Call schema check BEFORE attempting regular connection
+        self._ensure_schema()
+
+        try:
+            connection = psycopg2.connect(
+                host=POSTGRES_HOST,
+                port=POSTGRES_PORT,
+                database=POSTGRES_DB,
+                user=POSTGRES_USER,
+                password=POSTGRES_PASS,
+            )
+            connection.autocommit = True
+            return connection, connection.cursor()
+        except Exception as e:
+            print(f"Error getting cursor: {e}")
+            raise
+
+    def log_sensor_data(self, json_data: str) -> None:
+        try:
+            connection, cursor = self.get_cursor()
+            data_tuple = sensor_data_helper.create_insert_data_tuple(json_data)
+            cursor.execute(
+                f"""
+                INSERT INTO {POSTGRES_TABLE} (recorded, location, sensor, measurement, units, value)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """,
+                data_tuple,
+            )
+            print("Data stored successfully")
+        except Exception as e:
+            print(f"Error storing data: {e}")
+        return None
+
+    def fetch_sensor_data(self) -> list[str]:
+        try:
+            connection, cursor = self.get_cursor()
+            with connection.cursor(cursor_factory=RealDictCursor) as dict_cursor:
+                dict_cursor.execute(f"SELECT * FROM {POSTGRES_TABLE}")
+                raw_results = dict_cursor.fetchall()
+                results = []
+                for row in raw_results:
+                    clean_row = dict(row)
+                    clean_row["value"] = float(clean_row["value"])
+                    results.append(clean_row)
+                if results:
+                    print(f"Retrieved {len(results)} records")
+                    print(results)
+                    return results
+                else:
+                    print("No records found")
+        except Exception as e:
+            print(f"Error fetching data: {e}")
+        return []
+
+    def purge_sensor_data(self) -> None:
+        try:
+            connection, cursor = self.get_cursor()
+            cursor.execute(f"TRUNCATE TABLE {POSTGRES_TABLE}")
+            print("Table truncated")
+        except Exception as e:
+            print(f"Error purging data: {e}")
+        return None
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/legos/flask-app/redis_data_access.py
+----------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+import json
+import os
+
+import redis
+import sensor_data_helper
+from sensor_data_access_protocol import SensorDataAccess
+
+REDIS_HOST = os.environ.get("DATA_HOSTNAME", "localhost").lower()
+REDIS_PORT = 6379
+REDIS_KEY_BASE = "location:den:list"
+
+
+class RedisDataAccess(SensorDataAccess):
+    """Redis implementation of SensorDataAccess."""
+
+    def get_connection(self) -> redis.StrictRedis:
+        try:
+            redis_client = redis.StrictRedis(
+                host=REDIS_HOST,
+                port=REDIS_PORT,
+                decode_responses=True,
+                socket_timeout=5,  # Prevent hanging if Redis is down
+            )
+            redis_client.ping()
+            print(f"Connected to Redis at {REDIS_HOST}:{REDIS_PORT}")
+            return redis_client
+        except redis.ConnectionError as e:
+            print(f"Could not connect to Redis: {e}")
+            raise
+
+    def log_sensor_data(self, json_data: str) -> None:
+        try:
+            redis_client = self.get_connection()
+            json_string = json.dumps(json_data, default=sensor_data_helper.json_default)
+            redis_client.rpush(REDIS_KEY_BASE, json_string)
+            print("Data stored successfully")
+        except Exception as e:
+            print(f"Error storing data: {e}")
+
+    def fetch_sensor_data(self) -> list[str]:
+        try:
+            redis_client = self.get_connection()
+            raw_results = redis_client.lrange(REDIS_KEY_BASE, 0, -1)
+            if raw_results:
+                results = [json.loads(item) for item in raw_results]
+                print(f"Retrieved {len(results)} records")
+                print(results)
+                return results
+            else:
+                print("No data found in Redis")
+                return []
+        except Exception as e:
+            print(f"Error retrieving data: {e}")
+            return []
+
+    def purge_sensor_data(self) -> None:
+        try:
+            redis_client = self.get_connection()
+            redis_client.delete(REDIS_KEY_BASE)
+            print("Key deleted")
+        except Exception as e:
+            print(f"Error purging data: {e}")
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/legos/flask-app/sensor_data_access_protocol.py
+----------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+from abc import ABC, abstractmethod
+from typing import List
+
+
+class SensorDataAccess(ABC):
+    """Abstract base class for sensor data access."""
+
+    @abstractmethod
+    def log_sensor_data(self, json_data: str) -> None:
+        """Log sensor data."""
+        pass
+
+    @abstractmethod
+    def fetch_sensor_data(self) -> List[str]:
+        """Fetch sensor data."""
+        pass
+
+    @abstractmethod
+    def purge_sensor_data(self) -> None:
+        """Purge sensor data."""
+        pass
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/legos/flask-app/sensor_data_helper.py
+----------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+import datetime
+import decimal
+import json
+import random
+import time
+
+# Constants for sensor data generation
+sample_timestamp = 1768570200
+sample_location = "den"
+sample_sensor = "bmp280"
+sample_measurement = "temperature"
+sample_units = "C"
+sample_value = 22.3
+
+# Temperature range for random data generation
+min_temperature = 22.4
+max_temperature = 32.1
+temperature_precision = 1
+
+# Sensor data defaults
+sensor_data = {
+    "recorded": sample_timestamp,
+    "location": sample_location,
+    "sensor": sample_sensor,
+    "measurement": sample_measurement,
+    "units": sample_units,
+    "value": sample_value,
+}
+
+# Sensor data string and dictionary
+sensor_data_string = json.dumps(sensor_data)
+sensor_data_dict = json.loads(sensor_data_string)
+
+
+def generate_random_sensor_data():
+    data = sensor_data.copy()
+    data["recorded"] = int(time.time())
+    data["value"] = round(
+        random.uniform(min_temperature, max_temperature), temperature_precision
+    )
+    return data
+
+
+def create_insert_data_tuple(data):
+    """Prepares a tuple for SQL/CQL insertion."""
+    if not isinstance(data, dict):
+        raise TypeError("Input must be a dictionary")
+
+    # Return directly; no unreachable returns after raise
+    return (
+        int(data.get("recorded", 0)),
+        data.get("location"),
+        data.get("sensor"),
+        data.get("measurement"),
+        data.get("units"),
+        float(data.get("value", 0.0)),
+    )
+
+
+def json_default(obj):
+    """Handles non-standard JSON types."""
+    if isinstance(obj, decimal.Decimal):
+        return float(obj)
+    if isinstance(obj, (datetime.datetime, datetime.date)):
+        return obj.isoformat()
+    if isinstance(obj, ObjectId):
+        return str(obj)
+    raise TypeError(f"Object of type {obj.__class__.__name__} is not serializable")
+
+
+def json_list_to_csv(json_string_list):
+    headers = list(json_string_list[0].keys())
+    csv_lines = [",".join(headers)]
+
+    for item in json_string_list:
+        row = []
+        for key in headers:
+            val = str(item.get(key, ""))
+            val = val.replace('"', '""')
+            if "," in val or '"' in val:
+                val = f'"{val}"'
+            row.append(val)
+        csv_lines.append(",".join(row))
+
+    return "\n".join(csv_lines)
+
+
+
+========================================
+PROJECT: access
+PATH: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/access
+========================================
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/access/cassandra_data_access.py
+----------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+from sensor_data_access_protocol import SensorDataAccess
+
+
+class CassandraDataAccess(SensorDataAccess):
+    """Cassandra implementation of SensorDataAccess."""
+
+    def log_sensor_data(self, json_data: str) -> None:
+        print(f"Logging sensor data to Cassandra: {json_data}")
+
+    def fetch_sensor_data(self) -> list[str]:
+        print("Fetching sensor data from Cassandra")
+        return ['{"sensor": "pressure", "value": 1013}']
+
+    def purge_sensor_data(self) -> None:
+        print("Purging sensor data from Cassandra")
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/access/main.py
+----------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+import os
+
+from cassandra_data_access import CassandraDataAccess
+from mongo_data_access import MongoDataAccess
+from mysql_data_access import MySQLDataAccess
+from postgres_data_access import PostgresDataAccess
+from redis_data_access import RedisDataAccess
+from sensor_data_access_protocol import SensorDataAccess
+
+
+def get_data_access() -> SensorDataAccess:
+    data_access_type = os.getenv("DATA_ACCESS", "mongo")
+
+    if data_access_type == "redis":
+        return RedisDataAccess()
+    elif data_access_type == "mongo":
+        return MongoDataAccess()
+    elif data_access_type == "cassandra":
+        return CassandraDataAccess()
+    elif data_access_type == "mysql":
+        return MySQLDataAccess()
+    elif data_access_type == "postgres":
+        return PostgresDataAccess()
+    else:
+        raise ValueError(f"Unsupported DATA_ACCESS type: {data_access_type}")
+
+
+def main():
+    data_access = get_data_access()
+
+    # Log sensor data
+    data_access.log_sensor_data('{"sensor": "temperature", "value": 22.3}')
+
+    # Fetch sensor data
+    data = data_access.fetch_sensor_data()
+    print("Fetched sensor data:", data)
+
+    # Purge sensor data
+    data_access.purge_sensor_data()
+
+
+if __name__ == "__main__":
+    main()
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/access/mongo_data_access.py
+----------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+from sensor_data_access_protocol import SensorDataAccess
+
+
+class MongoDataAccess(SensorDataAccess):
+    """MongoDB implementation of SensorDataAccess."""
+
+    def log_sensor_data(self, json_data: str) -> None:
+        print(f"Logging sensor data to MongoDB: {json_data}")
+
+    def fetch_sensor_data(self) -> list[str]:
+        print("Fetching sensor data from MongoDB")
+        return ['{"sensor": "humidity", "value": 45.6}']
+
+    def purge_sensor_data(self) -> None:
+        print("Purging sensor data from MongoDB")
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/access/mysql_data_access.py
+----------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+from sensor_data_access_protocol import SensorDataAccess
+
+
+class MySQLDataAccess(SensorDataAccess):
+    """MySQL implementation of SensorDataAccess."""
+
+    def log_sensor_data(self, json_data: str) -> None:
+        print(f"Logging sensor data to MySQL: {json_data}")
+
+    def fetch_sensor_data(self) -> list[str]:
+        print("Fetching sensor data from MySQL")
+        return ['{"sensor": "light", "value": 300}']
+
+    def purge_sensor_data(self) -> None:
+        print("Purging sensor data from MySQL")
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/access/postgres_data_access.py
+----------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+from sensor_data_access_protocol import SensorDataAccess
+
+
+class PostgresDataAccess(SensorDataAccess):
+    """PostgreSQL implementation of SensorDataAccess."""
+
+    def log_sensor_data(self, json_data: str) -> None:
+        print(f"Logging sensor data to PostgreSQL: {json_data}")
+
+    def fetch_sensor_data(self) -> list[str]:
+        print("Fetching sensor data from PostgreSQL")
+        return ['{"sensor": "sound", "value": 75}']
+
+    def purge_sensor_data(self) -> None:
+        print("Purging sensor data from PostgreSQL")
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/access/redis_data_access.py
+----------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+from sensor_data_access_protocol import SensorDataAccess
+
+
+class RedisDataAccess(SensorDataAccess):
+    """Redis implementation of SensorDataAccess."""
+
+    def log_sensor_data(self, json_data: str) -> None:
+        print(f"Logging sensor data to Redis: {json_data}")
+
+    def fetch_sensor_data(self) -> list[str]:
+        print("Fetching sensor data from Redis")
+        return ['{"sensor": "temperature", "value": 22.3}']
+
+    def purge_sensor_data(self) -> None:
+        print("Purging sensor data from Redis")
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/access/sensor_data_access_protocol.py
+----------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+from abc import ABC, abstractmethod
+from typing import List
+
+
+class SensorDataAccess(ABC):
+    """Abstract base class for sensor data access."""
+
+    @abstractmethod
+    def log_sensor_data(self, json_data: str) -> None:
+        """Log sensor data."""
+        pass
+
+    @abstractmethod
+    def fetch_sensor_data(self) -> List[str]:
+        """Fetch sensor data."""
+        pass
+
+    @abstractmethod
+    def purge_sensor_data(self) -> None:
+        """Purge sensor data."""
+        pass
+
+
+
+========================================
+PROJECT: django-app
+PATH: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/api/django-app
+========================================
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/api/django-app/app.py
+----------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+import json
+import os
+import sys
+
+from django.conf import settings
+from django.core.management import execute_from_command_line
+from django.http import HttpResponse, JsonResponse
+from django.urls import path, re_path
+
+SENSOR_DATA_JSON = json.dumps(
+    {
+        "recorded": 1768570200,
+        "location": "den",
+        "sensor": "bmp280",
+        "measurement": "temperature",
+        "units": "C",
+        "value": 22.3,
+    }
+)
+
+
+def json_to_csv(json_string):
+    """Converts JSON to CSV with manual escaping for reliability."""
+    try:
+        data = json.loads(json_string)
+        if isinstance(data, dict):
+            data = [data]
+        if not data:
+            return ""
+
+        headers = list(data[0].keys())
+        csv_lines = [",".join(headers)]
+
+        for item in data:
+            row = []
+            for key in headers:
+                val = str(item.get(key, ""))
+                # 2025 Safety: Escape quotes and handle commas
+                val = val.replace('"', '""')
+                if "," in val or '"' in val:
+                    val = f'"{val}"'
+                row.append(val)
+            csv_lines.append(",".join(row))
+        return "\n".join(csv_lines)
+    except Exception:
+        return ""
+
+
+# Configure Django settings
+settings.configure(
+    DEBUG=True,
+    APPEND_SLASH=True,
+    SECRET_KEY="your-secret-key",
+    ROOT_URLCONF=__name__,
+    ALLOWED_HOSTS=["*"],
+    TEMPLATES=[
+        {
+            "BACKEND": "django.template.backends.django.DjangoTemplates",
+            "DIRS": [],
+        },
+    ],
+)
+
+
+# Views
+def home(request):
+    return JsonResponse({"message": "Django API Server is running!"})
+
+
+def echo_view(request):
+    if request.method == "GET":
+        return JsonResponse({"error": "GET requests are not allowed."}, status=405)
+    elif request.method == "POST":
+        data = json.loads(request.body)
+        return JsonResponse(data)
+
+
+def log_view(request):
+    if request.method == "GET":
+        return JsonResponse({"error": "GET requests are not allowed."}, status=405)
+    elif request.method == "POST":
+        data = json.loads(request.body)
+        return JsonResponse(data)
+
+
+def report_view(request):
+    csv_data = json_to_csv(SENSOR_DATA_JSON)
+    response = HttpResponse(csv_data, content_type="text/csv")
+    response["Content-Disposition"] = 'attachment; filename="report.csv"'
+    return response
+
+
+def purge_view(request):
+    if request.method == "GET":
+        return JsonResponse({"message": "Data purged."})
+    elif request.method == "POST":
+        return JsonResponse({"message": "Data purged."})
+
+
+# URL patterns
+urlpatterns = [
+    path("", home, name="home"),
+    re_path(r"^echo/?$", echo_view, name="echo"),
+    re_path(r"^log/?$", log_view, name="log"),
+    re_path(r"^report/?$", report_view, name="report"),
+    re_path(r"^purge/?$", purge_view, name="purge"),
+]
+
+# Run the app
+if __name__ == "__main__":
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", __name__)
+    execute_from_command_line(sys.argv)
+
+
+
+========================================
+PROJECT: flask-app
+PATH: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/api/flask-app
+========================================
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/api/flask-app/app.py
+----------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+import json
+
+from flask import Flask, Response, jsonify, request
+
+# Standard JSON constant
+SENSOR_DATA_JSON = json.dumps(
+    {
+        "recorded": 1768570200,
+        "location": "den",
+        "sensor": "bmp280",
+        "measurement": "temperature",
+        "units": "C",
+        "value": 22.3,
+    }
+)
+
+
+def json_to_csv_safe(json_string):
+    """Converts JSON to CSV with manual escaping for reliability."""
+    try:
+        data = json.loads(json_string)
+        if isinstance(data, dict):
+            data = [data]
+        if not data:
+            return ""
+
+        headers = list(data[0].keys())
+        csv_lines = [",".join(headers)]
+
+        for item in data:
+            row = []
+            for key in headers:
+                val = str(item.get(key, ""))
+                # 2025 Safety: Escape quotes and handle commas
+                val = val.replace('"', '""')
+                if "," in val or '"' in val:
+                    val = f'"{val}"'
+                row.append(val)
+            csv_lines.append(",".join(row))
+        return "\n".join(csv_lines)
+    except Exception:
+        return ""
+
+
+app = Flask(__name__)
+
+
+@app.route("/", methods=["GET"])
+def root():
+    return jsonify({"message": "Flask API Server is running!"})
+
+
+@app.route("/echo", methods=["POST"])
+@app.route("/log", methods=["POST"])
+def echo_log():
+    data = request.get_json(force=True)
+    if data is None:
+        return jsonify({"error": "No valid JSON provided"}), 400
+    return jsonify(data)
+
+
+@app.route("/report", methods=["GET"])
+def report():
+    csv_data = json_to_csv_safe(SENSOR_DATA_JSON)
+    return Response(
+        csv_data,
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=sensor_report.csv"},
+    )
+
+
+@app.route("/purge", methods=["GET", "POST"])
+def purge():
+    return jsonify({"message": "Data purge sequence complete"})
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8080, debug=False)
+
+
+
+========================================
+PROJECT: data
+PATH: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/data
+========================================
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/data/cassandra_data.py
+----------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+import os
+
+import sensor_data_helper
+from cassandra import DriverException
+from cassandra.cluster import Cluster
+
+# Configurations
+CASS_HOST = os.environ.get("DATA_HOSTNAME", "localhost").lower()
+CASS_PORT = 9042
+CASS_KEYSPACE = "sensor_data_db"
+CASS_TABLE = "sensor_data"
+
+
+def raw_cassandra_data():
+    cluster = Cluster([CASS_HOST], port=CASS_PORT)
+
+    try:
+        # 1. Connect
+        session = cluster.connect()
+        print(f"Connected to Cassandra at {CASS_HOST}:{CASS_PORT}")
+
+        # 1.1 Setup Keyspace and Table
+        session.execute(f"""
+            CREATE KEYSPACE IF NOT EXISTS {CASS_KEYSPACE}
+            WITH REPLICATION = {{ 'class' : 'SimpleStrategy', 'replication_factor' : 1 }};
+        """)
+        session.set_keyspace(CASS_KEYSPACE)
+
+        session.execute(f"""
+            CREATE TABLE IF NOT EXISTS {CASS_TABLE} (
+                recorded bigint,
+                location text,
+                sensor text,
+                measurement text,
+                units text,
+                value double,
+                PRIMARY KEY ((location), recorded, sensor)
+            );
+        """)
+
+        # 2. Store
+        data_dict = sensor_data_helper.generate_random_sensor_data()
+        insert_query = f"""
+            INSERT INTO {CASS_TABLE} (recorded, location, sensor, measurement, units, value)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """
+        session.execute(
+            insert_query, sensor_data_helper.create_insert_data_tuple(data_dict)
+        )
+        print("Data stored successfully")
+
+        # 3. Retrieve
+        rows = session.execute(f"SELECT * FROM {CASS_TABLE}")
+        results = [row._asdict() for row in rows]
+        if results:
+            print(f"Retrieved {len(results)} records")
+            print(results)
+
+        # 4. Delete
+        session.execute(f"TRUNCATE {CASS_TABLE}")
+        print("Table truncated")
+
+    except DriverException as e:
+        print(f"Cassandra Error: {e}")
+    finally:
+        cluster.shutdown()
+        print("Connection closed")
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/data/main.py
+----------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+from cassandra_data import raw_cassandra_data
+from mongo_data import raw_mongo_data
+from mysql_data import raw_mysql_data
+from postgres_data import raw_postgres_data
+from redis_data import raw_redis_data
+
+print("\nCASSANDRA\n#########")
+raw_cassandra_data()
+
+print("\nMONGO\n#########")
+raw_mongo_data()
+
+print("\nMYSQL\n#########")
+raw_mysql_data()
+
+print("\nPOSTGRES\n#########")
+raw_postgres_data()
+
+print("\nREDIS\n#########")
+raw_redis_data()
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/data/mongo_data.py
+----------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+import os
+
+import pymongo
+import sensor_data_helper
+
+# Configurations
+MONGO_HOST = os.environ.get("DATA_HOSTNAME", "localhost").lower()
+MONGO_PORT = 27017
+MONGO_DB = "sensor_data_db"
+MONGO_COLLECTION = "sensor_data"
+
+
+def raw_mongo_data():
+    # 1. Connect
+    try:
+        client = pymongo.MongoClient(
+            f"mongodb://{MONGO_HOST}:{MONGO_PORT}/", serverSelectionTimeoutMS=5000
+        )
+        db = client[MONGO_DB]
+        collection = db[MONGO_COLLECTION]
+        client.admin.command("ping")  # Verify connection
+        print(f"Connected to Mongo at {MONGO_HOST}:{MONGO_PORT}")
+    except Exception as e:
+        print(f"Connection failed: {e}")
+        return
+
+    # 2. Store
+    try:
+        new_sensor_data = sensor_data_helper.generate_random_sensor_data()
+        collection.insert_one(new_sensor_data)
+        print("Record stored successfully")
+    except Exception as e:
+        print(f"Storage error: {e}")
+
+    # 3. Retrieve
+    try:
+        cursor = collection.find({}, {"_id": 0})
+        results = list(cursor)
+        if results:
+            print(f"Retrieved {len(results)} records")
+            print(results)
+        else:
+            print("No matching records found")
+    except Exception as e:
+        print(f"Retrieval error: {e}")
+
+    # 4. Delete
+    try:
+        collection.delete_many({})
+        print("Removed all records")
+    except Exception as e:
+        print(f"Deletion error: {e}")
+    finally:
+        client.close()
+        print("Connection closed")
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/data/mysql_data.py
+----------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+import os
+
+import pymysql
+import pymysql.cursors
+import sensor_data_helper
+
+# Configurations
+MYSQL_HOST = os.environ.get("DATA_HOSTNAME", "localhost").lower()
+MYSQL_PORT = 3306
+MYSQL_DB = "sensor_data_db"
+MYSQL_TABLE = "sensor_data"
+MYSQL_USER = "root"
+MYSQL_PASS = ""
+
+
+def raw_mysql_data():
+    connection = None
+    try:
+        # 1. Connect
+        connection = pymysql.connect(
+            host=MYSQL_HOST,
+            port=MYSQL_PORT,
+            user=MYSQL_USER,
+            password=MYSQL_PASS,
+            autocommit=True,
+        )
+        print(f"Connected to MySQL at {MYSQL_HOST}:{MYSQL_PORT}")
+
+        # 1.1 Setup Database and Table
+        cursor = connection.cursor()
+        cursor.execute(f"CREATE DATABASE IF NOT EXISTS {MYSQL_DB};")
+        connection.select_db(MYSQL_DB)
+
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {MYSQL_TABLE} (
+                recorded BIGINT NOT NULL,
+                location VARCHAR(255) NOT NULL,
+                sensor VARCHAR(255) NOT NULL,
+                measurement VARCHAR(255) NOT NULL,
+                units VARCHAR(10) NOT NULL,
+                value DECIMAL(5,2) NOT NULL
+            );
+        """)
+
+        # 2. Store
+        data_tuple = sensor_data_helper.create_insert_data_tuple(
+            sensor_data_helper.generate_random_sensor_data()
+        )
+        insert_sql = f"INSERT INTO {MYSQL_TABLE} VALUES (%s, %s, %s, %s, %s, %s)"
+        cursor.execute(insert_sql, data_tuple)
+        print("Data stored successfully")
+
+        # 3. Retrieve
+        with connection.cursor(pymysql.cursors.DictCursor) as dict_cursor:
+            dict_cursor.execute(f"SELECT * FROM {MYSQL_TABLE}")
+            results = dict_cursor.fetchall()
+            for row in results:
+                row["value"] = float(row["value"])
+            if results:
+                print(f"Retrieved {len(results)} records")
+                print(results)
+
+        # 4. Delete
+        try:
+            cursor.execute(f"TRUNCATE TABLE {MYSQL_TABLE}")
+            print("Table truncated")
+        except pymysql.MySQLError as e:
+            print(f"Error purging data: {e}")
+
+    except pymysql.MySQLError as e:
+        print(f"MySQL Connection/Execution Error: {e}")
+    finally:
+        if connection:
+            connection.close()
+            print("Connection closed")
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/data/postgres_data.py
+----------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+import os
+
+import psycopg2
+import sensor_data_helper
+from psycopg2.extras import RealDictCursor
+
+POSTGRES_HOST = os.environ.get("DATA_HOSTNAME", "localhost").lower()
+POSTGRES_PORT = 5432
+POSTGRES_DB = "sensor_data_db"
+POSTGRES_TABLE = "sensor_data"
+POSTGRES_USER = "postgres"
+POSTGRES_PASS = ""
+
+
+def raw_postgres_data():
+    connection = None
+    try:
+        # 1.0 Administrative Connection (to 'postgres' default DB)
+        connection = psycopg2.connect(
+            host=POSTGRES_HOST,
+            port=POSTGRES_PORT,
+            database="postgres",
+            user=POSTGRES_USER,
+            password=POSTGRES_PASS,
+        )
+        connection.autocommit = True
+        cursor = connection.cursor()
+
+        # 1.1 Setup Database
+        cursor.execute(
+            "SELECT 1 FROM pg_catalog.pg_database WHERE datname = %s", (POSTGRES_DB,)
+        )
+        if not cursor.fetchone():
+            cursor.execute(f"CREATE DATABASE {POSTGRES_DB}")
+            print(f"Database {POSTGRES_DB} created")
+
+        # 1. Connect
+        connection.close()  # Administrative connection must close to switch DBs
+        connection = psycopg2.connect(
+            host=POSTGRES_HOST,
+            port=POSTGRES_PORT,
+            database=POSTGRES_DB,
+            user=POSTGRES_USER,
+            password=POSTGRES_PASS,
+        )
+        connection.autocommit = True
+        cursor = connection.cursor()
+        print(f"Connected to PostgreSQL at {POSTGRES_HOST}:{POSTGRES_PORT}")
+
+        # 1.3 Create Table
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {POSTGRES_TABLE} (
+                recorded BIGINT NOT NULL,
+                location VARCHAR(255) NOT NULL,
+                sensor VARCHAR(255) NOT NULL,
+                measurement VARCHAR(255) NOT NULL,
+                units VARCHAR(255) NOT NULL,
+                value NUMERIC(10, 2) NOT NULL
+            );
+        """)
+
+        # 2. Store
+        data_tuple = sensor_data_helper.create_insert_data_tuple(
+            sensor_data_helper.generate_random_sensor_data()
+        )
+        cursor.execute(
+            f"""
+            INSERT INTO {POSTGRES_TABLE} (recorded, location, sensor, measurement, units, value)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """,
+            data_tuple,
+        )
+        print("Data stored successfully")
+
+        # 3. Retrieve
+        with connection.cursor(cursor_factory=RealDictCursor) as dict_cursor:
+            dict_cursor.execute(f"SELECT * FROM {POSTGRES_TABLE}")
+            raw_results = dict_cursor.fetchall()
+
+            results = []
+            for row in raw_results:
+                clean_row = dict(row)
+                clean_row["value"] = float(clean_row["value"])
+                results.append(clean_row)
+            if results:
+                print(f"Retrieved {len(results)} records")
+                print(results)
+
+        # 4. Delete
+        cursor.execute(f"TRUNCATE TABLE {POSTGRES_TABLE}")
+        print("Table truncated")
+
+    except psycopg2.Error as e:
+        print(f"PostgreSQL Error: {e}")
+    finally:
+        if connection:
+            connection.close()
+            print("Connection closed")
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/data/redis_data.py
+----------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+import json
+import os
+
+import redis
+import sensor_data_helper
+
+REDIS_HOST = os.environ.get("DATA_HOSTNAME", "localhost").lower()
+REDIS_PORT = 6379
+REDIS_KEY_BASE = "location:den:list"
+
+
+def raw_redis_data():
+    # 1. Connect
+    try:
+        redis_client = redis.StrictRedis(
+            host=REDIS_HOST,
+            port=REDIS_PORT,
+            decode_responses=True,
+            socket_timeout=5,  # Prevent hanging if Redis is down
+        )
+        redis_client.ping()
+        print(f"Connected to Redis at {REDIS_HOST}:{REDIS_PORT}")
+    except redis.ConnectionError as e:
+        print(f"Could not connect to Redis: {e}")
+        return
+
+    # 2. Store
+    try:
+        data_dict = sensor_data_helper.generate_random_sensor_data()
+        json_string = json.dumps(data_dict, default=sensor_data_helper.json_default)
+
+        redis_client.rpush(REDIS_KEY_BASE, json_string)
+        print("Data stored successfully")
+    except Exception as e:
+        print(f"Error storing data: {e}")
+
+    # 3. Retrieve
+    try:
+        raw_results = redis_client.lrange(REDIS_KEY_BASE, 0, -1)
+
+        if raw_results:
+            results = [json.loads(item) for item in raw_results]
+            print(f"Retrieved {len(results)} records")
+            print(results)
+        else:
+            print("No data found in Redis")
+    except Exception as e:
+        print(f"Error retrieving data: {e}")
+
+    # 4. Delete
+    try:
+        redis_client.delete(REDIS_KEY_BASE)
+        print("Key deleted")
+    except Exception as e:
+        print(f"Error purging data: {e}")
+
+    try:
+        if redis_client.ping():
+            redis_client.connection_pool.disconnect()
+            print("Connection closed")
+    except redis.ConnectionError:
+        print("Connection was already closed or server is unreachable.")
+    except Exception as e:
+        print(f"Error closing connection: {e}")
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/python/data/sensor_data_helper.py
+----------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+import datetime
+import decimal
+import json
+import random
+import time
+
+# Constants for sensor data generation
+sample_timestamp = 1768570200
+sample_location = "den"
+sample_sensor = "bmp280"
+sample_measurement = "temperature"
+sample_units = "C"
+sample_value = 22.3
+
+# Temperature range for random data generation
+min_temperature = 22.4
+max_temperature = 32.1
+temperature_precision = 1
+
+# Sensor data defaults
+sensor_data = {
+    "recorded": sample_timestamp,
+    "location": sample_location,
+    "sensor": sample_sensor,
+    "measurement": sample_measurement,
+    "units": sample_units,
+    "value": sample_value,
+}
+
+# Sensor data string and dictionary
+sensor_data_string = json.dumps(sensor_data)
+sensor_data_dict = json.loads(sensor_data_string)
+
+
+def generate_random_sensor_data():
+    data = sensor_data.copy()
+    data["recorded"] = int(time.time())
+    data["value"] = round(
+        random.uniform(min_temperature, max_temperature), temperature_precision
+    )
+    return data
+
+
+def create_insert_data_tuple(data):
+    """Prepares a tuple for SQL/CQL insertion."""
+    if not isinstance(data, dict):
+        raise TypeError("Input must be a dictionary")
+
+    # Return directly; no unreachable returns after raise
+    return (
+        int(data.get("recorded", 0)),
+        data.get("location"),
+        data.get("sensor"),
+        data.get("measurement"),
+        data.get("units"),
+        float(data.get("value", 0.0)),
+    )
+
+
+def json_default(obj):
+    """Handles non-standard JSON types."""
+    if isinstance(obj, decimal.Decimal):
+        return float(obj)
+    if isinstance(obj, (datetime.datetime, datetime.date)):
+        return obj.isoformat()
+    if isinstance(obj, ObjectId):
+        return str(obj)
+    raise TypeError(f"Object of type {obj.__class__.__name__} is not serializable")
+
+
+

@@ -1,0 +1,592 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+```            ⣠⣄
+               ⣿⣿
+     ⣤⣄       ⠐⠛⠛⠂      ⣠⣤           ███████                            █████████   █████                ███
+     ⠙⢿⣷⡶ ⣀⣴⣶⣾⣟⣻⣷⣶⣦⣀ ⢶⣾⡿⠋         ███░░░░░███                         ███░░░░░███ ░░███                ░░░
+      ⠘⠋⣠⢞⣿⠿⠛⠉⣉⣉⠉⠛⠿⣿⡳⣄⠙⠃         ███     ░░███ ████████    ██████    ░███    ░░░  ███████   ████████  ████  ████████    ███████
+      ⢀⣼⣿⡟⠁⣤⡀ ⢹⡏ ⢀⣤⠈⢻⣿⣧⡀        ░███      ░███░░███░░███  ███░░███   ░░█████████ ░░░███░   ░░███░░███░░███ ░░███░░███  ███░░███
+    ⢀ ⣸⣿⡟  ⠈⠻⠂⢈⡁⠐⠟⠁  ⢻⣿⣇ ⡀      ░███      ░███ ░███ ░███ ░███████     ░░░░░░░░███  ░███     ░███ ░░░  ░███  ░███ ░███ ░███ ░███
+ ⢾⣿⣿⣿ ⣿⣹⡇⢸⡷⠶⠆⠰⣿⣿⠆⠰⠶⢾⡇⢸⣏⣿ ⣿⣿⣿⡷  ░░███     ███  ░███ ░███ ░███░░░      ███    ░███  ░███ ███ ░███      ░███  ░███ ░███ ░███ ░███
+    ⠈ ⢹⣿⣧  ⢀⣴⠄⢈⡁⠠⣦⡀  ⣼⣿⡏ ⠁       ░░░███████░   ████ █████░░██████    ░░█████████   ░░█████  █████     █████ ████ █████░░███████
+      ⠈⢻⣿⣧⡀⠛⠁ ⣸⣇ ⠈⠛⢀⣼⣿⡟⠁           ░░░░░░░    ░░░░ ░░░░░  ░░░░░░      ░░░░░░░░░     ░░░░░  ░░░░░     ░░░░░ ░░░░ ░░░░░  ░░░░░███
+      ⢠⣄⠙⢮⣿⣶⣤⣀⣉⣉⣀⣤⣶⣿⡵⠋⣠⡄                                                                                               ███ ░███
+     ⣠⣾⡿⠷ ⠉⠻⠿⢿⣯⣽⡿⠿⠟⠉ ⠾⢿⣷⣄                                                                                              ░░██████
+     ⠛⠋      ⠠⣤⣤⠄        ⠙⠛                                                                                               ░░░░░░
+               ⣿⣿
+               ⠙⠋
+
+﹏𓊝﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏﹏
+One String, Many Prompts: A Hands-On Workshop in AI Code Generation
+
+{
+    "recorded" : 1768570200,
+    "location" : "den",
+    "sensor" : "bmp280",
+    "measurement" : "temperature",
+    "units" : "C",
+    "value" : 22.3
+}
+```
+
+The concept is simple, using this one simple five parameter JSON string, you can use AI/LLM to generate code for any programming language, framework, or library. This workshop will guide you through the process of using AI code generation to create a simple web application as well as the IoT microcontroller necessary to collect and transmit from a wide variety of different sensors.
+
+
+REQUIRED SOFTWARE
+☸ ────────────────────────
+1. Docker Desktop (latest)
+2. Microsoft VS CODE (latest)
+
+
+INSTALLATION
+☸ ────────────────────────
+1. Install Docker Desktop from
+   https://www.docker.com/products/docker-desktop
+2. Install Microsoft VS CODE from
+   https://code.visualstudio.com/download
+3. Configure VS Code to use the GitHub Copilot extension
+   https://code.visualstudio.com/docs/copilot/overview
+
+
+REQUIRED ACCOUNTS
+☸ ────────────────────────
+1. Docker Hub account
+   https://docs.docker.com/accounts/create-account/
+2. GitHub account
+   https://docs.github.com/en/get-started/start-your-journey/creating-an-account-on-github
+3. CoPilot account
+   https://code.visualstudio.com/docs/copilot/setup
+
+
+PRE-CHECK
+☸ ────────────────────────
+1. Docker Check: from the command line...
+   https://www.docker.com/blog/how-to-check-docker-version/
+
+   docker pull python:3.13.5
+   docker pull mongo:8.2.2
+
+
+2. Verify Your GitHub Copilot Account
+   https://docs.github.com/en/copilot/how-tos/manage-your-account
+
+
+3. VS Code Check: from within the IDE...
+   https://docs.github.com/en/copilot/how-tos/configure-personal-settings/configure-in-ide?tool=vscode
+
+   Verify Subscription:
+     Ensure your GitHub account has an active Copilot subscription.
+     You can check this in your GitHub account settings.
+
+   Check Extensions:
+     Open the Extensions view (Ctrl+Shift+X).
+     Search for "GitHub Copilot" and "GitHub Copilot Chat"
+     Make sure they are installed and enabled.
+     Ensure both extensions are up to date.
+
+
+EXPECTAIONS
+𓆞 ────────────────────────
+In this two-hour assignment, you will be required to complete the following tasks:
+1. Download, install, and launch a generic MongoDB v8.2.2 container from Docker Hub.
+2. Download, install, launch and attach to a generic Python v3.13.0 container from Docker Hub.
+3. Use the GitHub Copilot extension to complete the assignment by typing prompts and generating code.
+
+
+HOMEWORK (after the two-hour session)
+𓆞 ────────────────────────
+- Basic: Complete the IoT side of the assignment using CircuitPython
+- Advanced: Use a different combination of languages and databases
+- Masters: Complete all 5^5 different combinations of solutions
+
+
+NOTES
+𓆞 ────────────────────────
+- All steps, exercises, tools, and techniques have been fully vetted on both macOS and Linux Mint (and Raspbian for the IoT tasks).
+- You should not need to have a paid account for GitHub Copilot (unless you have already maxed out your monthly quota).
+- Ensure that your VS Code is properly configured with the GitHub Copilot extension before starting the assignment
+- The focus will be on the prompts and the generated code, hence the 'clean' docker container runtimes.
+- Fully rendered solutions in every language for every database will be available.
+- All prompts used to generate all code will also be available.
+- Solutions for the IoT side of the assignment will be provided
+
+
+OPTIONS (if you choose to... you may use...)
+☠ ────────────────────────
+- GO, Java, Python, Rust or Swift Docker container for your runtime environment (solutions provided).
+- Cassandra, Mongo, MySQL, PostgreSQL or Redis Docker container for your database (solutions provided).
+- A different Code Editor or IDE like Zed, JetBrains, or NeoVim.
+- Any other AI/LLM like Google Gemini, Anthropic Claude, Meta LLama, or OpenAI ChatGPT
+- Running Ollama may be an option for those who prefer to run AI/LLM locally (download your model from https://ollama.ai/).
+
+
+DOCKER CONTAINER VERSIONS (very important)
+☠ ────────────────────────
+- rust:1.91.1
+- golang:1.25.4
+- gradle:9.2.1-jdk21
+- python:3.13.5
+- swift:6.2.1
+- redis:8.4.0
+- postgres:18.1
+- mysql:9.5.0
+- mongo:8.2.2
+- cassandra:5.0.6
+
+
+BONUS
+☠ ────────────────────────
+- A 'lite' mobile version of the assignment will be provided that only requires an iPad
+- The full end to end solution will be fully operational (provided you have an IoT dev board)
+
+####################
+01-task_one_data.txt
+####################
+
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+ ██████████     █████████   ███████████   █████████
+░░███░░░░███   ███░░░░░███ ░█░░░███░░░█  ███░░░░░███
+ ░███   ░░███ ░███    ░███ ░   ░███  ░  ░███    ░███
+ ░███    ░███ ░███████████     ░███     ░███████████
+ ░███    ░███ ░███░░░░░███     ░███     ░███░░░░░███
+ ░███    ███  ░███    ░███     ░███     ░███    ░███
+ ██████████   █████   █████    █████    █████   █████
+░░░░░░░░░░   ░░░░░   ░░░░░    ░░░░░    ░░░░░   ░░░░░
+
+
+This assignment walks you through setting up a simple Python + Mongo environment, writing basic functions to store, retrieve, update, and delete a standard OneString JSON record, running the code, and then converting those functions into refined AI prompts that consistently regenerate the same working code. The goal is to establish a repeatable workflow for handling the OneString payload and to build a reliable library of prompts before expanding to other languages and databases. Python and Mongo are used first because they’re the easiest, most forgiving pair: Python minimizes boilerplate and errors, Mongo stores JSON natively, and together they let you focus on mastering prompt design rather than debugging complex language or database issues.
+
+
+
+{
+    "recorded" : 1768570200,
+    "location" : "den",
+    "sensor" : "bmp280",
+    "measurement" : "temperature",
+    "units" : "C",
+    "value" : 22.3
+}
+
+
+I. Start Your Development Environment (recommend using python and mongo):
+
+  1. Launch Docker Desktop, and use the terminal within Docker Desktop to:
+    A. Run a mongo database docker container
+
+      docker run --name mongo-container -p 27017:27017 -d mongo:8.2.2
+
+    B. Run a python docker container and attach to the mongo database container
+
+      docker run --name python-container -p 8080:8080 -v [{REPLACE-WITH-PATH-TO-YOUR-LOCAL-CODE}]:/usr/src/python -d python:3.13.5 sleep infinity
+
+  2. Launch VS Code, Open Folder, and Create a Terminal to:
+    A. Connect to the python container from the VS Code Terminal
+
+      docker exec -it -w /usr/src/python python-container /bin/bash
+
+  3. Create the following file structure within VS Code:
+    ./python/data
+    ./python/data/main.py
+    ./python/data/mongo_data.py
+    ./python/data/requirements.txt
+
+
+II. Modify the following prompts to be language and database specific (recommend using python and mongo):
+
+  1. Create a python function to connect to a mongo database
+  2. Create a python function that will store the following string into a mongo database
+  3. Create a python function that will retrieve the following string from a mongo database
+  4. Create a python function that will delete the following string from a mongo database
+  5. Create a main function that will call each of the functions
+  6. Create a requirements.text file to include all requirements in this source file
+  7. Modify all five methods into one source file using this string as the string that is being stored:
+
+  The String:
+  {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+
+III. Run your python Code
+
+  python --version
+  pip install --upgrade pip
+  pip install -r requirements.txt
+  export DATA_HOSTNAME="YOUR_LOACAL_MACHINE_IP_ADDRESS"
+  python main.py
+
+
+IV. Once fully operational, copy each of the four functions individually, and add it to the following AI prompt...
+
+  "Using the following source code, generate an AI prompt that would produce this code:"
+
+    compared to...
+
+  "Using the following source code to generate an AI prompt, using simple english, that would produce this code:"
+
+    NOTE: Cute/paste the code you generated above that sucessfully ran.
+
+
+V. Now take all of the original prompts from II above, and add it to the following AI prompt...
+
+  "How could each of these prompts be written in a manner to produce 'better' code:"
+
+    NOTE: use any instruction to replace 'better' (like cleaner, efficient, optimized, readable, concise, performant, scalable, maintainable, secure, etc.)
+
+
+EXTRA PROMPTS TO TRY:
+
+  A. Create a python function that will update any value in the key value pair of a mutable dictionary
+  B. Create a python function that will generate a random number between 22.4 and 34.1, limited to one decimal place of precision
+  C. Create a python function that will generate the integer value of the current Unix Epoch Timestamp
+  D. Create a python function that will update both the "recorded" value with the current Unix Epoch Timestamp, and the "value" with a random number between 22.4 and 34.1, using the following string as input:
+
+    The String:
+    {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  E. Modify the original code to pass-in/insert a randomized string into the mongo database each time the code is run
+  F. Create a python function that will remove any key/value pair from a dictionary (like "id" or "_id")
+  G. Combine all of the above to create a small helper file that works with the OneString JSON data (generate sample data, validate required fields, and convert JSON to CSV). This helper should be simple utility code and can be called directly.
+
+  Now run the generated code and these prompts back through AI as you did in IV and V previously.
+
+
+BEYOND MONGO & PYTHON:
+
+  Use the same technique for other databases like Postgres, MySQL, Redis and Cassandra
+  Use the same technique for other languages like Go, Java, Rust and Swift
+
+####################
+02-task_two_api.txt
+####################
+
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+   █████████   ███████████  █████
+  ███░░░░░███ ░░███░░░░░███░░███
+ ░███    ░███  ░███    ░███ ░███
+ ░███████████  ░██████████  ░███
+ ░███░░░░░███  ░███░░░░░░   ░███
+ ░███    ░███  ░███         ░███
+ █████   █████ █████        █████
+░░░░░   ░░░░░ ░░░░░        ░░░░░
+
+
+This exercise guides you through building a minimal web service using Python and Flask, creating a simple project structure, defining basic routes, running the server, and then converting your working code into refined AI prompts that reliably reproduce the same application. The goal is to establish a clean, repeatable workflow for generating web-framework code before expanding to more complex stacks. Flask is chosen first because it is lightweight, easy to configure, and flexible enough to expose routes with minimal boilerplate—letting you focus on prompt design instead of framework quirks or heavy scaffolding. This small, low-friction setup creates the foundation for later extending the same technique to other Python frameworks and to full web stacks in Go, Java, Rust, and Swift.
+
+
+
+{
+    "recorded" : 1768570200,
+    "location" : "den",
+    "sensor" : "bmp280",
+    "measurement" : "temperature",
+    "units" : "C",
+    "value" : 22.3
+}
+
+
+I. Start Your Development Environment (recommend using python and flask):
+
+  1. Launch Docker Desktop, and use the terminal within Docker Desktop to:
+    A. Run a python docker container and attach to the mongo database container
+
+      docker run --name python-container -p 8080:8080 -v [{REPLACE-WITH-PATH-TO-YOUR-LOCAL-CODE}]:/usr/src/python -d python:3.13.5 sleep infinity
+
+  2. Launch VS Code, Open Folder, and Create a Terminal to:
+    A. Connect to the python container from the VS Code Terminal
+
+      docker exec -it -w /usr/src/python python-container /bin/bash
+
+  3. Create the following file structure within VS Code:
+    ./python/api/flask-app/flask-app
+    ./python/api/flask-app//app.py
+    ./python/api/flask-app/requirements.txt
+
+
+II. Modify the following prompts to be language and framework specific (recommend using python and flask):
+
+    1. create a very basic web app using the python language flask framework
+    2. what would the requirements.txt file look like for this main.py file
+    3. how do i modify the flask app to bind to any ip address and a specific port when it runs
+    4. add routes for the following:
+        GET /
+        POST /echo
+        POST /log
+        GET /report
+        POST or GET /purge
+
+
+III. Run your python Code
+
+  python --version
+  pip install --upgrade pip
+  pip install -r requirements.txt
+  python app.py
+
+
+IV: Create your own AI/LLM prompts that will generate a test script:
+
+    * Using WGET or CURL, create a test script that will test the following functions:
+        * GET /
+        * POST /echo
+        * POST /log
+        * GET /report
+        * POST or GET /purge
+
+    NOTE: this depends on what your local operating system supports, as
+    these test scripts should run outside of the python docker container
+
+
+V. Once fully operational, copy each of the four functions individually, and add it to the following AI prompt...
+
+  "Using the following source code, generate an AI prompt that would produce this code:"
+
+    compared to...
+
+  "Using the following source code to generate an AI prompt, using simple english, that would produce this code:"
+
+    NOTE: Cute/paste the code you generated above that sucessfully ran.
+
+
+VI. Now take all of the original prompts from II above, and add it to the following AI prompt...
+
+  "How could each of these prompts be written in a manner to produce 'better' code:"
+
+    NOTE: use any instruction to replace 'better' (like cleaner, efficient, optimized, readable, concise, performant, scalable, maintainable, secure, etc.)
+
+
+EXTRA PROMPTS:
+
+    A. return the exact same JSON object that is sent in on the HTTP POST request
+    B. create a static string constant for the following JSON structure:
+        { "recorded" : 1768570200, "location" : "den", "sensor" : "bmp280", "measurement" : "temperature", "units" : "C", "value" : 22.3 }
+    C. create a method or function to convert a json string to a csv string, using the keys as the column names
+    D. can you do this without using the crate csv
+    E. return the csv string as a downloadable file, be sure to modify the headers of the response
+    F. return string message as a JSON object
+    G. use the WGET/CURL test script you created above to generate a postman file for importing the API endpoints
+
+  Now run the generated code and these prompts back through AI as you did in IV and V previously.
+
+
+BEYOND FLASK & PYTHON:
+
+  Use the same technique for another python framework like django
+  Use the same technique for other languages and frameworks like Go gin, Java spring, Rust acix and Swift vapor
+
+####################
+03-task_three_access.txt
+####################
+
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+   █████████     █████████    █████████  ██████████  █████████   █████████
+  ███░░░░░███   ███░░░░░███  ███░░░░░███░░███░░░░░█ ███░░░░░███ ███░░░░░███
+ ░███    ░███  ███     ░░░  ███     ░░░  ░███  █ ░ ░███    ░░░ ░███    ░░░
+ ░███████████ ░███         ░███          ░██████   ░░█████████ ░░█████████
+ ░███░░░░░███ ░███         ░███          ░███░░█    ░░░░░░░░███ ░░░░░░░░███
+ ░███    ░███ ░░███     ███░░███     ███ ░███ ░   █ ███    ░███ ███    ░███
+ █████   █████ ░░█████████  ░░█████████  ██████████░░█████████ ░░█████████
+░░░░░   ░░░░░   ░░░░░░░░░    ░░░░░░░░░  ░░░░░░░░░░  ░░░░░░░░░   ░░░░░░░░░
+
+
+Using Python's Abstract Base Class technique (and following the PEP8 style guide), this exercise will demonstrate how to create a base class for a sensor data object.  Once the base class is created, we will create a subclass for a specific database access class.  The goal is to create a base class that can be used to store and retrieve sensor data from a database.  This will make it easier to add data sources to a web api app implemented using wither python's Flask or Django framework.
+
+
+
+{
+    "recorded" : 1768570200,
+    "location" : "den",
+    "sensor" : "bmp280",
+    "measurement" : "temperature",
+    "units" : "C",
+    "value" : 22.3
+}
+
+
+I. Start Your Development Environment (recommend using python):
+
+  1. Launch Docker Desktop, and use the terminal within Docker Desktop to:
+    A. Run a python docker container and attach to the mongo database container
+
+      docker run --name python-container -p 8080:8080 -v [{REPLACE-WITH-PATH-TO-YOUR-LOCAL-CODE}]:/usr/src/python -d python:3.13.5 sleep infinity
+
+  2. Launch VS Code, Open Folder, and Create a Terminal to:
+    A. Connect to the python container from the VS Code Terminal
+
+      docker exec -it -w /usr/src/python python-container /bin/bash
+
+  3. Create the following file structure within VS Code:
+    ./python/access
+    ./python/access/mongo_data_access.py
+    ./python/access/sensor_data_access_protocol.py
+    ./python/access/main.py
+
+
+II. Modify the following prompts to be language and framework specific (recommend using python and flask):
+
+    1. write a Python interface, using the ABC technique, for sensor data access with three abstract methods: log, fetch, and purge, using JSON strings and type hints.
+    2. create an class that implements the sensor data access protocol interface for mongo_data_access.py
+    3. in a main.py file, create an instance of the mongo_data_access class and call the log, fetch, and purge methods
+    4. what would the requirements.txt file look like for this main.py file
+
+
+III. Run your python Code
+
+  python --version
+  pip install --upgrade pip
+  pip install -r requirements.txt
+  python main.py
+
+
+V. Once fully operational, copy each of the four functions individually, and add it to the following AI prompt...
+
+  "Using the following source code, generate an AI prompt that would produce this code:"
+
+    compared to...
+
+  "Using the following source code to generate an AI prompt, using simple english, that would produce this code:"
+
+    NOTE: Cute/paste the code you generated above that sucessfully ran.
+
+
+VI. Now take all of the original prompts from II above, and add it to the following AI prompt...
+
+  "How could each of these prompts be written in a manner to produce 'better' code:"
+
+    NOTE: use any instruction to replace 'better' (like cleaner, efficient, optimized, readable, concise, performant, scalable, maintainable, secure, etc.)
+
+
+EXTRA PROMPTS:
+
+    A. Create a data access implementation class for a cassandra database
+    B. Create a data access implementation class for a postgresql database
+    C. Create a data access implementation class for a mysql database
+    D. Create a data access implementation class for a redis database
+
+  Now run the generated code and these prompts back through AI as you did in IV and V previously.
+
+
+BEYOND FLASK & PYTHON:
+
+  Use the same technique for another python framework like django
+  Use the same technique for other languages and frameworks like Go gin, Java spring, Rust acix and Swift vapor
+
+####################
+04-task_four_legos.txt
+####################
+
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+
+ █████       ██████████   █████████     ███████     █████████
+░░███       ░░███░░░░░█  ███░░░░░███  ███░░░░░███  ███░░░░░███
+ ░███        ░███  █ ░  ███     ░░░  ███     ░░███░███    ░░░
+ ░███        ░██████   ░███         ░███      ░███░░█████████
+ ░███        ░███░░█   ░███    █████░███      ░███ ░░░░░░░░███
+ ░███      █ ░███ ░   █░░███  ░░███ ░░███     ███  ███    ░███
+ ███████████ ██████████ ░░█████████  ░░░███████░  ░░█████████
+░░░░░░░░░░░ ░░░░░░░░░░   ░░░░░░░░░     ░░░░░░░     ░░░░░░░░░
+
+
+This exercise combines the first three assignments into a fully operational end-to-end solution that logs sensor data through a Flask web API, stores it in MongoDB, retrieves it as CSV, and exposes purge and reporting routes—all driven by refined AI prompts. The goal is to show how small, well-defined Python and Flask “lego pieces” (individual functions, routes, and database helpers) can be snapped together to form a complete working system, perfectly aligned with the CodeMash “Legos” theme of building larger solutions from simple, reusable blocks. By structuring the project into modular Flask routes and separate Mongo utility functions, you learn how to compose functionality cleanly, test each piece independently, and then use the same workflow as earlier: run the code, extract the functions, generate prompts that recreate them, and refine those prompts for higher-quality output. This combined assignment demonstrates how prompt-driven development can scale from isolated components to a functioning data pipeline, while still keeping the tools (Python, Flask, Mongo) simple enough to focus on AI-assisted code generation—not framework complexity.
+
+
+
+{
+    "recorded" : 1768570200,
+    "location" : "den",
+    "sensor" : "bmp280",
+    "measurement" : "temperature",
+    "units" : "C",
+    "value" : 22.3
+}
+
+
+I. Start Your Development Environment (recommend using python, flask and mongo):
+
+  1. Launch Docker Desktop, and use the terminal within Docker Desktop to:
+    A. Run a mongo database docker container
+
+      docker run --name mongo-container -p 27017:27017 -d mongo:8.2.2
+
+    B. Run a python docker container and attach to the mongo database container
+
+      docker run --name python-container -p 8080:8080 -v [{REPLACE-WITH-PATH-TO-YOUR-LOCAL-CODE}]:/usr/src/python -d python:3.13.5 sleep infinity
+
+  2. Launch VS Code, Open Folder, and Create a Terminal to:
+    A. Connect to the python container from the VS Code Terminal
+
+      docker exec -it -w /usr/src/python python-container /bin/bash
+
+  3. Create the following file structure within VS Code:
+    ./python/legos
+    ./python/legos/flask-app/flask_mongo.py
+    ./python/legos/flask-app/app.py
+    ./python/legos/flask-app/requirements.txt
+
+
+II. Before engaging your AI/LLM agent, perform the following tasks leveraging the work from previous tasks:
+
+  1. copy the entire api solution from the previous exercise ./python/api/flask-app into ./python/legos
+  2. copy only the mongo_data_access.py, sensor_data_access_protocol.py from the previous exercise ./python/access into ./python/legos
+  3. copy only the sensor_data_helper.py from the previous exercise ./python/data into ./python/legos
+
+  NOTE: for #3 above, this code came from "EXTRA PROMPTS TO TRY:" lettter "G" in task 1 "DATA"
+
+
+III. Modify the following prompts to be language and framework specific (recommend using python and flask):
+
+  1. in each of the three functions of mongo_data_access.py (log_sensor_data, fetch_sensor_data, purge_sensor_data) create a connection to the mongo database, use the same/similar logic for connecting to a mongo database found in the mongo_data.py source file
+  2. in the mongo_data_access.py's log_sensor_data, take the "json_data: str" being passed in to the log_sensor_data() function to populate the params of the insert, use the same/similar logic for inserting sensor data into a mongo database found in the mongo_data.py source file
+  3. in the mongo_data_access.py's fetch_sensor_data, create a list[str] of JSON strings resulting from the select to a mongo collection as the return for fetch_sensor_data(), use the same/similar logic for selecting sensor data from a mongo database found in the mongo_data.py source file
+  4. in the mongo_data_access.py's purge_sensor_data, delete/truncate all data in the sensor data collection, use the same/similar logic for deleting/truncating sensor data from a mongo database found in the mongo_data.py source file
+  5. Reuse the OneString helper from earlier tasks for generating, validating, and formatting data. Treat it as a simple utility that can be called directly from the application code.
+
+  NOTE: it is important that mongo_data_access.py continues to strictly conform to the 'sensor_data_access_protocol' as it does now
+
+
+IV. Run your python Code
+
+  python --version
+  pip install --upgrade pip
+  pip install -r requirements.txt
+  export DATA_HOSTNAME="YOUR_LOACAL_MACHINE_IP_ADDRESS"
+  python app.py
+
+
+V. Once fully operational, copy each of the four functions individually, and add it to the following AI prompt...
+
+  "Using the following source code, generate an AI prompt that would produce this code:"
+
+    compared to...
+
+  "Using the following source code to generate an AI prompt, using simple english, that would produce this code:"
+
+    NOTE: Cute/paste the code you generated above that sucessfully ran.
+
+
+VI. Now take all of the original prompts from II above, and add it to the following AI prompt...
+
+  "How could each of these prompts be written in a manner to produce 'better' code:"
+
+    NOTE: use any instruction to replace 'better' (like cleaner, efficient, optimized, readable, concise, performant, scalable, maintainable, secure, etc.)
+
+
+EXTRA PROMPTS:
+
+  A. Using the ABC for sensor_data_access_protocol, implement a method to instantiate a new sensor data access object based on an environment variable.
+  B. Implement a better logging mechanism for the sensor data access object.
+
+  Now run the generated code and these prompts back through AI as you did in IV and V previously.
+
+
+BEYOND FLASK, MONGO & PYTHON:
+
+  Use the same technique for another python framework like django
+  Use the same technique for other databases like Postgres, MySQL, Redis and Cassandra
+  Use the same technique for other languages and frameworks like Go gin, Java spring, Rust acix and Swift vapor

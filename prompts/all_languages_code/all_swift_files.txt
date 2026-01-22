@@ -1,0 +1,1989 @@
+========================================
+PROJECT: vapor-app
+PATH: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/swift/legos/vapor-app
+========================================
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/swift/legos/vapor-app/Package.swift
+----------------------------------------
+// swift-tools-version:5.9
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+import PackageDescription
+
+let package = Package(
+    name: "vapor-app",
+    platforms: [
+        .macOS(.v10_15)
+    ],
+    dependencies: [
+        .package(url: "https://github.com/vapor/vapor.git", from: "4.119.2"),
+        .package(url: "https://github.com/apple/swift-cassandra-client", from: "0.8.0"),
+        .package(url: "https://github.com/orlandos-nl/MongoKitten.git", from: "7.10.0"),
+        .package(url: "https://github.com/Mordil/RediStack.git", from: "1.6.2"),
+        .package(url: "https://github.com/vapor/postgres-nio.git", from: "1.29.0"),
+        .package(url: "https://github.com/vapor/mysql-nio.git", from: "1.9.0"),
+        .package(url: "https://github.com/apple/swift-log.git", from: "1.8.0"),
+        .package(url: "https://github.com/apple/swift-nio.git", from: "2.92.1"),
+        .package(url: "https://github.com/apple/swift-collections.git", from: "1.0.0"),
+    ],
+    targets: [
+        .executableTarget(
+            name: "App",
+            dependencies: [
+                .product(name: "Vapor", package: "vapor"),
+                .product(name: "CassandraClient", package: "swift-cassandra-client"),
+                .product(name: "MongoKitten", package: "MongoKitten"),
+                .product(name: "RediStack", package: "RediStack"),
+                .product(name: "PostgresNIO", package: "postgres-nio"),
+                .product(name: "MySQLNIO", package: "mysql-nio"),
+                .product(name: "Logging", package: "swift-log"),
+                .product(name: "NIOCore", package: "swift-nio"),
+                .product(name: "NIOPosix", package: "swift-nio"),
+                .product(name: "NIOConcurrencyHelpers", package: "swift-nio"),
+                .product(name: "DequeModule", package: "swift-collections"),
+            ],
+            path: "Sources"
+        )
+    ]
+)
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/swift/legos/vapor-app/Sources/CassandraDataAccess.swift
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+import CassandraClient
+import Foundation
+
+public class CassandraDataAccess: SensorDataAccess {
+
+    public init() {
+    }
+
+    // Create a connection to the Cassandra cluster
+    private func connect() async throws -> CassandraClient {
+        let configuration = CassandraClient.Configuration(
+            contactPointsProvider: { completion in
+                completion(.success(["localhost"]))
+            },
+            port: 9042,
+            protocolVersion: .v4
+        )
+        return CassandraClient(configuration: configuration)
+    }
+
+    public func logSensorData(jsonData: String) async throws {
+        print("Logging sensor data to Cassandra: \(jsonData)")
+
+        let client = try await connect()
+        defer { try? client.shutdown() }
+
+        // Parse the JSON string to extract sensor data fields
+        guard let data = jsonData.data(using: .utf8),
+            let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
+        else {
+            throw NSError(
+                domain: "CassandraDataAccess", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Invalid JSON data"])
+        }
+
+        let recorded: Int64
+        if let recordedInt = json["recorded"] as? Int {
+            recorded = Int64(recordedInt)
+        } else if let recordedDouble = json["recorded"] as? Double {
+            recorded = Int64(recordedDouble)
+        } else {
+            recorded = Int64(Date().timeIntervalSince1970)
+        }
+
+        let location = json["location"] as? String ?? ""
+        let sensor = json["sensor"] as? String ?? ""
+        let measurement = json["measurement"] as? String ?? ""
+        let units = json["units"] as? String ?? ""
+
+        let value: Double
+        if let valueDouble = json["value"] as? Double {
+            value = valueDouble
+        } else if let valueInt = json["value"] as? Int {
+            value = Double(valueInt)
+        } else {
+            value = 0.0
+        }
+
+        let query =
+            "INSERT INTO sensor_data_db.sensor_data (recorded, location, sensor, measurement, units, value) VALUES (?, ?, ?, ?, ?, ?)"
+        let params: [CassandraClient.Statement.Value] = [
+            .int64(recorded),
+            .string(location),
+            .string(sensor),
+            .string(measurement),
+            .string(units),
+            .double(value),
+        ]
+
+        try await client.run(query, parameters: params)
+        print("Insert completed successfully")
+    }
+
+    public func fetchSensorData() async throws -> [String] {
+        print("Fetching sensor data from Cassandra")
+
+        let client = try await connect()
+        defer { try? client.shutdown() }
+
+        let query =
+            "SELECT recorded, location, sensor, measurement, units, value FROM sensor_data_db.sensor_data"
+        let rows = try await client.query(query)
+
+        return rows.compactMap { row -> String? in
+            let recorded = row.column("recorded")?.int64 ?? 0
+            let location = row.column("location")?.string ?? ""
+            let sensor = row.column("sensor")?.string ?? ""
+            let measurement = row.column("measurement")?.string ?? ""
+            let units = row.column("units")?.string ?? ""
+            let value = row.column("value")?.double ?? 0.0
+
+            let jsonDict: [String: Any] = [
+                "recorded": recorded,
+                "location": location,
+                "sensor": sensor,
+                "measurement": measurement,
+                "units": units,
+                "value": value,
+            ]
+
+            if let jsonData = try? JSONSerialization.data(withJSONObject: jsonDict, options: []),
+                let jsonString = String(data: jsonData, encoding: .utf8)
+            {
+                return jsonString
+            }
+            return nil
+        }
+    }
+
+    public func purgeSensorData() async throws {
+        print("Purging sensor data from Cassandra")
+
+        let client = try await connect()
+        defer { try? client.shutdown() }
+
+        let query = "TRUNCATE sensor_data_db.sensor_data"
+        _ = try await client.query(query)
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/swift/legos/vapor-app/Sources/Main.swift
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+import Foundation
+import Vapor
+
+func getDataAccess() -> SensorDataAccess {
+    let dataAccessType = ProcessInfo.processInfo.environment["DATA_ACCESS"] ?? "redis"
+
+    switch dataAccessType {
+    case "redis":
+        return RedisDataAccess()
+    case "mongo":
+        return MongoDataAccess()
+    case "cassandra":
+        return CassandraDataAccess()
+    case "mysql":
+        return MySQLDataAccess()
+    case "postgres":
+        return PostgresDataAccess()
+    default:
+        fatalError("Unsupported DATA_ACCESS type: \(dataAccessType)")
+    }
+}
+
+@main
+struct App {
+    static func main() async throws {
+        var env = try Environment.detect()
+        try LoggingSystem.bootstrap(from: &env)
+        let app = try await Application.make(env, .singleton)
+        try configure(app)
+        try await app.execute()
+    }
+}
+
+func configure(_ app: Application) throws {
+
+    app.http.server.configuration.hostname = "0.0.0.0"
+    app.http.server.configuration.port = 8080
+
+    app.routes.get { req -> String in
+        return "{\"message\": \"Vapor API Server is running!\"}"
+    }
+
+    app.routes.post("echo") { req async throws -> Response in
+        // Get the raw request body as ByteBuffer
+        guard let body = req.body.data else {
+            throw Abort(.badRequest, reason: "Invalid JSON data")
+        }
+
+        // Echo it back as JSON response
+        return Response(
+            status: .ok,
+            headers: ["Content-Type": "application/json"],
+            body: .init(buffer: body)
+        )
+    }
+
+    app.routes.post("log") { req async throws -> Response in
+        // Get the raw request body as ByteBuffer
+        guard let body = req.body.data,
+            let jsonString = body.getString(at: 0, length: body.readableBytes)
+        else {
+            throw Abort(.badRequest, reason: "Invalid JSON data")
+        }
+
+        // Create an instance of SensorDataAccess
+        let dataAccess = getDataAccess()
+
+        // Log the sensor data
+        do {
+            try await dataAccess.logSensorData(jsonData: jsonString)
+        } catch {
+            throw Abort(
+                .internalServerError,
+                reason: "Failed to log sensor data: \(error.localizedDescription)")
+        }
+
+        // Return a success response
+        return Response(
+            status: .ok,
+            headers: ["Content-Type": "application/json"],
+            body: .init(string: "{\"message\": \"Sensor data logged successfully\"}")
+        )
+    }
+
+    app.routes.get("report") { req async throws -> Response in
+        // Create an instance of SensorDataAccess
+        let dataAccess = getDataAccess()
+
+        // Fetch sensor data
+        let sensorData: [String]
+        do {
+            sensorData = try await dataAccess.fetchSensorData()
+        } catch {
+            throw Abort(
+                .internalServerError,
+                reason: "Failed to fetch sensor data: \(error.localizedDescription)")
+        }
+
+        // Convert the sensor data to CSV
+        let csvString: String
+        do {
+            csvString = try jsonStringsToCSV(jsonStrings: sensorData)
+        } catch {
+            throw Abort(
+                .internalServerError,
+                reason: "Failed to convert sensor data to CSV: \(error.localizedDescription)")
+        }
+
+        // Return CSV response
+        return Response(
+            status: .ok,
+            headers: ["Content-Type": "text/csv"],
+            body: .init(string: csvString)
+        )
+    }
+
+    app.routes.get("purge") { req async throws -> String in
+        // Create an instance of SensorDataAccess
+        let dataAccess = getDataAccess()
+
+        // Purge sensor data
+        do {
+            try await dataAccess.purgeSensorData()
+        } catch {
+            throw Abort(
+                .internalServerError,
+                reason: "Failed to purge sensor data: \(error.localizedDescription)")
+        }
+
+        return "{\"message\": \"Purge executed\"}"
+    }
+
+    app.routes.post("purge") { req async throws -> String in
+        // Create an instance of SensorDataAccess
+        let dataAccess = getDataAccess()
+
+        // Purge sensor data
+        do {
+            try await dataAccess.purgeSensorData()
+        } catch {
+            throw Abort(
+                .internalServerError,
+                reason: "Failed to purge sensor data: \(error.localizedDescription)")
+        }
+
+        return "{\"message\": \"Purge executed\"}"
+    }
+
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/swift/legos/vapor-app/Sources/MongoDataAccess.swift
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+import Foundation
+import MongoKitten
+
+public class MongoDataAccess: SensorDataAccess {
+    public init() {}
+
+    // Connect to MongoDB server and access the database and collection
+    private func connect() async throws -> MongoKitten.MongoCollection {
+        let settings = try ConnectionSettings("mongodb://localhost:27017")
+        let connection = try await MongoConnection.connect(settings: settings)
+        let database = connection["sensor_data_db"]
+        return database["sensor_data"]
+    }
+
+    public func logSensorData(jsonData: String) async throws {
+        print("Logging sensor data to MongoDB: \(jsonData)")
+
+        let collection = try await connect()
+
+        // Parse the JSON string to extract sensor data fields
+        guard let data = jsonData.data(using: .utf8),
+            let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
+        else {
+            throw NSError(
+                domain: "MongoDataAccess", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Invalid JSON data"])
+        }
+
+        let recorded: Int
+        if let recordedInt = json["recorded"] as? Int {
+            recorded = recordedInt
+        } else if let recordedDouble = json["recorded"] as? Double {
+            recorded = Int(recordedDouble)
+        } else {
+            recorded = Int(Date().timeIntervalSince1970)
+        }
+
+        let location = json["location"] as? String ?? ""
+        let sensor = json["sensor"] as? String ?? ""
+        let measurement = json["measurement"] as? String ?? ""
+        let units = json["units"] as? String ?? ""
+
+        let value: Double
+        if let valueDouble = json["value"] as? Double {
+            value = valueDouble
+        } else if let valueInt = json["value"] as? Int {
+            value = Double(valueInt)
+        } else {
+            value = 0.0
+        }
+
+        let sensorData = SensorData(
+            recorded: recorded,
+            location: location,
+            sensor: sensor,
+            measurement: measurement,
+            units: units,
+            value: value
+        )
+
+        try await collection.insertEncoded(sensorData)
+        print("Insert completed successfully")
+    }
+
+    public func fetchSensorData() async throws -> [String] {
+        print("Fetching sensor data from MongoDB")
+
+        let collection = try await connect()
+
+        var results: [String] = []
+        for try await doc in collection.find().decode(SensorData.self) {
+            let jsonDict: [String: Any] = [
+                "recorded": doc.recorded,
+                "location": doc.location,
+                "sensor": doc.sensor,
+                "measurement": doc.measurement,
+                "units": doc.units,
+                "value": doc.value,
+            ]
+
+            if let jsonData = try? JSONSerialization.data(withJSONObject: jsonDict, options: []),
+                let jsonString = String(data: jsonData, encoding: .utf8)
+            {
+                results.append(jsonString)
+            }
+        }
+
+        return results
+    }
+
+    public func purgeSensorData() async throws {
+        print("Purging sensor data from MongoDB")
+
+        let collection = try await connect()
+        try await collection.deleteAll(where: [:])
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/swift/legos/vapor-app/Sources/MySQLDataAccess.swift
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+import Foundation
+import Logging
+import MySQLNIO
+import NIOCore
+import NIOPosix
+import NIOSSL
+
+public class MySQLDataAccess: SensorDataAccess {
+    public init() {}
+
+    // Establish a connection to the MySQL database
+    private func connect() async throws -> MySQLConnection {
+        let eventLoopGroup = MultiThreadedEventLoopGroup.singleton
+        let eventLoop = eventLoopGroup.next()
+        let address = try SocketAddress.makeAddressResolvingHost("localhost", port: 3306)
+        let logger = Logger(label: "MySQLNIO_Connection")
+        var tlsConfiguration = TLSConfiguration.makeClientConfiguration()
+        tlsConfiguration.certificateVerification = .none
+        let connectFuture = MySQLConnection.connect(
+            to: address,
+            username: "root",
+            database: "sensor_data_db",
+            password: "",
+            tlsConfiguration: tlsConfiguration,
+            serverHostname: nil,
+            logger: logger,
+            on: eventLoop
+        )
+        return try await connectFuture.get()
+    }
+
+    public func logSensorData(jsonData: String) async throws {
+        print("Logging sensor data to MySQL: \(jsonData)")
+
+        let connection = try await connect()
+
+        // Parse the JSON string to extract sensor data fields
+        guard let data = jsonData.data(using: .utf8),
+            let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
+        else {
+            try await connection.close().get()
+            throw NSError(
+                domain: "MySQLDataAccess", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Invalid JSON data"])
+        }
+
+        let recorded: Int
+        if let recordedInt = json["recorded"] as? Int {
+            recorded = recordedInt
+        } else if let recordedDouble = json["recorded"] as? Double {
+            recorded = Int(recordedDouble)
+        } else {
+            recorded = Int(Date().timeIntervalSince1970)
+        }
+
+        let location = json["location"] as? String ?? ""
+        let sensor = json["sensor"] as? String ?? ""
+        let measurement = json["measurement"] as? String ?? ""
+        let units = json["units"] as? String ?? ""
+
+        let value: Double
+        if let valueDouble = json["value"] as? Double {
+            value = valueDouble
+        } else if let valueInt = json["value"] as? Int {
+            value = Double(valueInt)
+        } else {
+            value = 0.0
+        }
+
+        let sql =
+            "INSERT INTO sensor_data (recorded, location, sensor, measurement, units, value) VALUES (?, ?, ?, ?, ?, ?)"
+        let params: [MySQLData] = [
+            MySQLData(int: recorded),
+            MySQLData(string: location),
+            MySQLData(string: sensor),
+            MySQLData(string: measurement),
+            MySQLData(string: units),
+            MySQLData(double: value),
+        ]
+
+        do {
+            _ = try await connection.query(sql, params).get()
+            print("Insert completed successfully")
+        } catch {
+            try await connection.close().get()
+            throw error
+        }
+
+        try await connection.close().get()
+    }
+
+    public func fetchSensorData() async throws -> [String] {
+        print("Fetching sensor data from MySQL")
+
+        let connection = try await connect()
+
+        let sql = "SELECT recorded, location, sensor, measurement, units, value FROM sensor_data"
+        let rows: [MySQLRow]
+        do {
+            rows = try await connection.query(sql).get()
+        } catch {
+            try await connection.close().get()
+            throw error
+        }
+
+        let result = rows.compactMap { row -> String? in
+            let recorded = row.column("recorded")?.int ?? 0
+            let location = row.column("location")?.string ?? ""
+            let sensor = row.column("sensor")?.string ?? ""
+            let measurement = row.column("measurement")?.string ?? ""
+            let units = row.column("units")?.string ?? ""
+            let value = row.column("value")?.double ?? 0.0
+
+            let jsonDict: [String: Any] = [
+                "recorded": recorded,
+                "location": location,
+                "sensor": sensor,
+                "measurement": measurement,
+                "units": units,
+                "value": value,
+            ]
+
+            if let jsonData = try? JSONSerialization.data(withJSONObject: jsonDict, options: []),
+                let jsonString = String(data: jsonData, encoding: .utf8)
+            {
+                return jsonString
+            }
+            return nil
+        }
+
+        try await connection.close().get()
+        return result
+    }
+
+    public func purgeSensorData() async throws {
+        print("Purging sensor data from MySQL")
+
+        let connection = try await connect()
+
+        let sql = "DELETE FROM sensor_data"
+        do {
+            _ = try await connection.query(sql).get()
+        } catch {
+            try await connection.close().get()
+            throw error
+        }
+
+        try await connection.close().get()
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/swift/legos/vapor-app/Sources/PostgresDataAccess.swift
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+import Foundation
+import Logging
+import NIOCore
+import NIOPosix
+import PostgresNIO
+
+public class PostgresDataAccess: SensorDataAccess {
+    public init() {}
+
+    // Helper for bridging EventLoopFuture to async/await
+    private func awaitPostgresFuture<T>(_ future: EventLoopFuture<T>) async throws -> T {
+        return try await withCheckedThrowingContinuation { continuation in
+            future.whenComplete { result in
+                switch result {
+                case .success(let value):
+                    continuation.resume(returning: value)
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    // Establish a connection to the PostgreSQL database
+    private func connect() async throws -> PostgresConnection {
+        let eventLoopGroup = MultiThreadedEventLoopGroup.singleton
+        let eventLoop = eventLoopGroup.next()
+        let logger = Logger(label: "PostgresNIO_Connection")
+        let configuration = PostgresConnection.Configuration(
+            host: "localhost",
+            port: 5432,
+            username: "postgres",
+            password: "postgres",
+            database: "sensor_data_db",
+            tls: .disable
+        )
+        return try await awaitPostgresFuture(
+            PostgresConnection.connect(
+                on: eventLoop,
+                configuration: configuration,
+                id: 1,
+                logger: logger
+            )
+        )
+    }
+
+    public func logSensorData(jsonData: String) async throws {
+        print("Logging sensor data to PostgreSQL: \(jsonData)")
+
+        let connection = try await connect()
+
+        // Parse the JSON string to extract sensor data fields
+        guard let data = jsonData.data(using: .utf8),
+            let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
+        else {
+            try await awaitPostgresFuture(connection.close())
+            throw NSError(
+                domain: "PostgresDataAccess", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Invalid JSON data"])
+        }
+
+        let recorded: Int64
+        if let recordedInt = json["recorded"] as? Int {
+            recorded = Int64(recordedInt)
+        } else if let recordedDouble = json["recorded"] as? Double {
+            recorded = Int64(recordedDouble)
+        } else {
+            recorded = Int64(Date().timeIntervalSince1970)
+        }
+
+        let location = json["location"] as? String ?? ""
+        let sensor = json["sensor"] as? String ?? ""
+        let measurement = json["measurement"] as? String ?? ""
+        let units = json["units"] as? String ?? ""
+
+        let value: Double
+        if let valueDouble = json["value"] as? Double {
+            value = valueDouble
+        } else if let valueInt = json["value"] as? Int {
+            value = Double(valueInt)
+        } else {
+            value = 0.0
+        }
+
+        let insertSQL = """
+                INSERT INTO sensor_data (recorded, location, sensor, measurement, units, value)
+                VALUES ($1, $2, $3, $4, $5, $6)
+            """
+        let insertParams: [PostgresData] = [
+            PostgresData(int64: recorded),
+            PostgresData(string: location),
+            PostgresData(string: sensor),
+            PostgresData(string: measurement),
+            PostgresData(string: units),
+            PostgresData(double: value),
+        ]
+
+        do {
+            _ = try await awaitPostgresFuture(connection.query(insertSQL, insertParams))
+            print("Insert completed successfully")
+        } catch {
+            try await awaitPostgresFuture(connection.close())
+            throw error
+        }
+
+        try await awaitPostgresFuture(connection.close())
+    }
+
+    public func fetchSensorData() async throws -> [String] {
+        print("Fetching sensor data from PostgreSQL")
+
+        let connection = try await connect()
+
+        let selectSQL = """
+                SELECT recorded, location, sensor, measurement, units, value::DOUBLE PRECISION AS value
+                FROM sensor_data
+            """
+
+        var results: [String] = []
+
+        do {
+            let queryResult = try await awaitPostgresFuture(connection.query(selectSQL))
+            for rawRow in queryResult.rows {
+                let row = PostgresRandomAccessRow(rawRow)
+                let recorded = try row["recorded"].decode(Int64?.self) ?? 0
+                let location = try row["location"].decode(String?.self) ?? ""
+                let sensor = try row["sensor"].decode(String?.self) ?? ""
+                let measurement = try row["measurement"].decode(String?.self) ?? ""
+                let units = try row["units"].decode(String?.self) ?? ""
+                let value = try row["value"].decode(Double?.self) ?? 0.0
+
+                let jsonDict: [String: Any] = [
+                    "recorded": recorded,
+                    "location": location,
+                    "sensor": sensor,
+                    "measurement": measurement,
+                    "units": units,
+                    "value": value,
+                ]
+
+                if let jsonData = try? JSONSerialization.data(
+                    withJSONObject: jsonDict, options: []),
+                    let jsonString = String(data: jsonData, encoding: .utf8)
+                {
+                    results.append(jsonString)
+                }
+            }
+        } catch {
+            try await awaitPostgresFuture(connection.close())
+            throw error
+        }
+
+        try await awaitPostgresFuture(connection.close())
+        return results
+    }
+
+    public func purgeSensorData() async throws {
+        print("Purging sensor data from PostgreSQL")
+
+        let connection = try await connect()
+
+        let deleteSQL = "TRUNCATE TABLE sensor_data"
+
+        do {
+            _ = try await awaitPostgresFuture(connection.query(deleteSQL))
+        } catch {
+            try await awaitPostgresFuture(connection.close())
+            throw error
+        }
+
+        try await awaitPostgresFuture(connection.close())
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/swift/legos/vapor-app/Sources/RedisDataAccess.swift
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+import Foundation
+import NIOCore
+import NIOPosix
+@preconcurrency import RediStack
+
+public class RedisDataAccess: SensorDataAccess {
+    public init() {}
+
+    // Connect to the Redis server
+    private func connect() async throws -> RedisConnection {
+        let group = MultiThreadedEventLoopGroup.singleton
+        let future = RedisConnection.make(
+            configuration: try RedisConnection.Configuration(hostname: "localhost", port: 6379),
+            boundEventLoop: group.next()
+        )
+        return try await future.get()
+    }
+
+    public func logSensorData(jsonData: String) async throws {
+        print("Logging sensor data to Redis: \(jsonData)")
+
+        let connection = try await connect()
+
+        // Parse the JSON string to extract sensor data fields
+        guard let data = jsonData.data(using: .utf8),
+            let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
+        else {
+            throw NSError(
+                domain: "RedisDataAccess", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Invalid JSON data"])
+        }
+
+        let recorded: Int
+        if let recordedInt = json["recorded"] as? Int {
+            recorded = recordedInt
+        } else if let recordedDouble = json["recorded"] as? Double {
+            recorded = Int(recordedDouble)
+        } else {
+            recorded = Int(Date().timeIntervalSince1970)
+        }
+
+        let location = json["location"] as? String ?? ""
+        let sensor = json["sensor"] as? String ?? ""
+        let measurement = json["measurement"] as? String ?? ""
+        let units = json["units"] as? String ?? ""
+
+        let value: Double
+        if let valueDouble = json["value"] as? Double {
+            value = valueDouble
+        } else if let valueInt = json["value"] as? Int {
+            value = Double(valueInt)
+        } else {
+            value = 0.0
+        }
+
+        let sensorData = SensorData(
+            recorded: recorded,
+            location: location,
+            sensor: sensor,
+            measurement: measurement,
+            units: units,
+            value: value
+        )
+
+        let encoder = JSONEncoder()
+        let jsonString = String(data: try encoder.encode(sensorData), encoding: .utf8)!
+        _ = try await connection.rpush(jsonString, into: RedisKey("sensor_data")).get()
+        print("Insert completed successfully")
+    }
+
+    public func fetchSensorData() async throws -> [String] {
+        print("Fetching sensor data from Redis")
+
+        let connection = try await connect()
+
+        let respValues = try await connection.lrange(
+            from: RedisKey("sensor_data"), firstIndex: 0, lastIndex: -1
+        ).get()
+
+        var results: [String] = []
+        for value in respValues {
+            if let rawString = value.string {
+                results.append(rawString)
+            }
+        }
+
+        return results
+    }
+
+    public func purgeSensorData() async throws {
+        print("Purging sensor data from Redis")
+
+        let connection = try await connect()
+        _ = try await connection.delete(RedisKey("sensor_data")).get()
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/swift/legos/vapor-app/Sources/SensorDataAccessProtocol.swift
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+import Foundation
+
+public protocol SensorDataAccess {
+    /// Logs sensor data
+    func logSensorData(jsonData: String) async throws
+
+    /// Fetches sensor data
+    func fetchSensorData() async throws -> [String]
+
+    /// Purges sensor data
+    func purgeSensorData() async throws
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/swift/legos/vapor-app/Sources/SensorDataJsonHelper.swift
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+import Foundation
+
+// Define the structure for sensor data
+public struct SensorData: Codable {
+    var recorded: Int
+    var location: String
+    var sensor: String
+    var measurement: String
+    var units: String
+    var value: Double
+}
+
+// Constants for testing
+struct Constants {
+    let jsonString = """
+        {"recorded":1737861909,"location":"den","sensor":"bmp280","measurement":"temperature","units":"C","value":33.3}
+        """
+}
+
+// Generate random sensor data for testing
+public func get_random_sensor_data() -> SensorData {
+    SensorData(
+        recorded: Int(Date().timeIntervalSince1970),
+        location: "den",
+        sensor: "bmp280",
+        measurement: "temperature",
+        units: "C",
+        value: Double(round(10 * Double.random(in: 22.4...32.1)) / 10)
+    )
+}
+
+// Convert an array of JSON strings to CSV format
+public func jsonStringsToCSV(jsonStrings: [String]) throws -> String {
+    var csvRows = [String]()
+    var header = [String]()
+
+    for jsonStr in jsonStrings {
+        let data = jsonStr.data(using: .utf8)!
+        let json = try JSONSerialization.jsonObject(with: data, options: [])
+        guard let jsonDict = json as? [String: Any] else {
+            throw NSError(domain: "Invalid JSON", code: 0, userInfo: nil)
+        }
+
+        if header.isEmpty {
+            header = Array(jsonDict.keys).sorted()
+        }
+
+        let row = header.map { key -> String in
+            guard let value = jsonDict[key] else { return "" }
+            switch value {
+            case let str as String:
+                if str.contains(",") || str.contains("\"") || str.contains("\n") {
+                    let escaped = str.replacingOccurrences(of: "\"", with: "\"\"")
+                    return "\"\(escaped)\""
+                } else {
+                    return str
+                }
+            case let number as NSNumber:
+                return number.stringValue
+            case _ as NSNull:
+                return ""
+            default:
+                return "\"\(value)\""
+            }
+        }.joined(separator: ",")
+
+        csvRows.append(row)
+    }
+
+    let csv = [header.joined(separator: ","), csvRows.joined(separator: "\n")]
+    return csv.joined(separator: "\n")
+}
+
+
+
+========================================
+PROJECT: access
+PATH: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/swift/access
+========================================
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/swift/access/Package.swift
+----------------------------------------
+// swift-tools-version:5.9
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+import PackageDescription
+
+let package = Package(
+    name: "AccessApp",
+    platforms: [
+        .macOS(.v13)  // Specify the minimum macOS version
+    ],
+    products: [
+        // Define the executable product
+        .executable(name: "AccessApp", targets: ["Run"])
+    ],
+    dependencies: [
+        // Add any external dependencies here (if needed)
+    ],
+    targets: [
+        // Define the library target for the Access module
+        .target(
+            name: "Access",
+            dependencies: [],
+            path: "Sources/Access"
+        ),
+        // Define the executable target for the Run module
+        .executableTarget(
+            name: "Run",
+            dependencies: ["Access"],
+            path: "Sources/Run"
+        ),
+    ]
+)
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/swift/access/Sources/Access/CassandraDataAccess.swift
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+import Foundation
+
+public class CassandraDataAccess: SensorDataAccess {
+    public init() {}
+
+    public func logSensorData(jsonData: String) throws {
+        print("Logging sensor data to Cassandra: \(jsonData)")
+    }
+
+    public func fetchSensorData() throws -> [String] {
+        print("Fetching sensor data from Cassandra")
+        return ["{\"sensor\": \"pressure\", \"value\": 1013}"]
+    }
+
+    public func purgeSensorData() throws {
+        print("Purging sensor data from Cassandra")
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/swift/access/Sources/Access/MongoDataAccess.swift
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+import Foundation
+
+public class MongoDataAccess: SensorDataAccess {
+    public init() {}
+
+    public func logSensorData(jsonData: String) throws {
+        print("Logging sensor data to MongoDB: \(jsonData)")
+    }
+
+    public func fetchSensorData() throws -> [String] {
+        print("Fetching sensor data from MongoDB")
+        return ["{\"sensor\": \"humidity\", \"value\": 45.6}"]
+    }
+
+    public func purgeSensorData() throws {
+        print("Purging sensor data from MongoDB")
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/swift/access/Sources/Access/MySQLDataAccess.swift
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+import Foundation
+
+public class MySQLDataAccess: SensorDataAccess {
+    public init() {}
+
+    public func logSensorData(jsonData: String) throws {
+        print("Logging sensor data to MySQL: \(jsonData)")
+    }
+
+    public func fetchSensorData() throws -> [String] {
+        print("Fetching sensor data from MySQL")
+        return ["{\"sensor\": \"light\", \"value\": 300}"]
+    }
+
+    public func purgeSensorData() throws {
+        print("Purging sensor data from MySQL")
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/swift/access/Sources/Access/PostgresDataAccess.swift
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+import Foundation
+
+public class PostgresDataAccess: SensorDataAccess {
+    public init() {}
+
+    public func logSensorData(jsonData: String) throws {
+        print("Logging sensor data to PostgreSQL: \(jsonData)")
+    }
+
+    public func fetchSensorData() throws -> [String] {
+        print("Fetching sensor data from PostgreSQL")
+        return ["{\"sensor\": \"sound\", \"value\": 75}"]
+    }
+
+    public func purgeSensorData() throws {
+        print("Purging sensor data from PostgreSQL")
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/swift/access/Sources/Access/RedisDataAccess.swift
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+import Foundation
+
+public class RedisDataAccess: SensorDataAccess {
+    public init() {}
+
+    public func logSensorData(jsonData: String) throws {
+        print("Logging sensor data to Redis: \(jsonData)")
+    }
+
+    public func fetchSensorData() throws -> [String] {
+        print("Fetching sensor data from Redis")
+        return ["{\"sensor\": \"temperature\", \"value\": 22.3}"]
+    }
+
+    public func purgeSensorData() throws {
+        print("Purging sensor data from Redis")
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/swift/access/Sources/Access/SensorDataAccessProtocol.swift
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+import Foundation
+
+public protocol SensorDataAccess {
+    /// Logs sensor data
+    func logSensorData(jsonData: String) throws
+
+    /// Fetches sensor data
+    func fetchSensorData() throws -> [String]
+
+    /// Purges sensor data
+    func purgeSensorData() throws
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/swift/access/Sources/Run/main.swift
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+import Access
+import Foundation
+
+func getDataAccess() -> SensorDataAccess {
+    let dataAccessType = ProcessInfo.processInfo.environment["DATA_ACCESS"] ?? "redis"
+
+    switch dataAccessType {
+    case "redis":
+        return RedisDataAccess()
+    case "mongo":
+        return MongoDataAccess()
+    case "cassandra":
+        return CassandraDataAccess()
+    case "mysql":
+        return MySQLDataAccess()
+    case "postgres":
+        return PostgresDataAccess()
+    default:
+        fatalError("Unsupported DATA_ACCESS type: \(dataAccessType)")
+    }
+}
+
+func main() {
+    let dataAccess = getDataAccess()
+
+    do {
+        // Log sensor data
+        try dataAccess.logSensorData(jsonData: "{\"sensor\": \"temperature\", \"value\": 22.3}")
+
+        // Fetch sensor data
+        let data = try dataAccess.fetchSensorData()
+        print("Fetched sensor data: \(data)")
+
+        // Purge sensor data
+        try dataAccess.purgeSensorData()
+    } catch {
+        print("An error occurred: \(error)")
+    }
+}
+
+main()
+
+
+
+========================================
+PROJECT: vapor-app
+PATH: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/swift/api/vapor-app
+========================================
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/swift/api/vapor-app/Package.swift
+----------------------------------------
+// swift-tools-version:5.9
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+import PackageDescription
+
+let package = Package(
+    name: "vapor-app",
+    platforms: [
+        .macOS(.v10_15)
+    ],
+    dependencies: [
+        .package(url: "https://github.com/vapor/vapor.git", from: "4.121.0")
+    ],
+    targets: [
+        .executableTarget(
+            name: "App",
+            dependencies: [
+                .product(name: "Vapor", package: "vapor")
+            ],
+            path: "Sources",
+        )
+    ]
+)
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/swift/api/vapor-app/Sources/Main.swift
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+import Foundation
+import Vapor
+
+@main
+struct App {
+    static func main() async throws {
+        var env = try Environment.detect()
+        try LoggingSystem.bootstrap(from: &env)
+        let app = try await Application.make(env, .singleton)
+        try configure(app)
+        try await app.execute()
+    }
+}
+
+func configure(_ app: Application) throws {
+
+    app.http.server.configuration.hostname = "0.0.0.0"
+    app.http.server.configuration.port = 8080
+
+    app.routes.get { req -> String in
+        return "{\"message\": \"Vapor API Server is running!\"}"
+    }
+
+    app.routes.post("echo") { req async throws -> Response in
+        // Get the raw request body as ByteBuffer
+        guard let body = req.body.data else {
+            throw Abort(.badRequest, reason: "Invalid JSON data")
+        }
+
+        // Echo it back as JSON response
+        return Response(
+            status: .ok,
+            headers: ["Content-Type": "application/json"],
+            body: .init(buffer: body)
+        )
+    }
+
+    app.routes.post("log") { req async throws -> Response in
+        // Get the raw request body as ByteBuffer
+        guard let body = req.body.data else {
+            throw Abort(.badRequest, reason: "Invalid JSON data")
+        }
+
+        // Echo it back as JSON response
+        return Response(
+            status: .ok,
+            headers: ["Content-Type": "application/json"],
+            body: .init(buffer: body)
+        )
+    }
+
+    app.routes.get("report") { req -> Response in
+        let csvString = try jsonStringsToCSV(jsonStrings: [Constants().jsonString])
+
+        // Return CSV response
+        return Response(
+            status: .ok,
+            headers: ["Content-Type": "text/csv"],
+            body: .init(string: csvString)
+        )
+    }
+
+    app.routes.get("purge") { req -> String in
+        return "{\"message\": \"Purge executed\"}"
+    }
+
+    app.routes.post("purge") { req -> String in
+        return "{\"message\": \"Purge executed\"}"
+    }
+
+}
+
+struct Constants {
+    let jsonString = """
+        {"recorded":1737861909,"location":"den","sensor":"bmp280","measurement":"temperature","units":"C","value":33.3}
+        """
+}
+
+func jsonStringsToCSV(jsonStrings: [String]) throws -> String {
+    var csvRows = [String]()
+    var header = [String]()
+
+    for jsonStr in jsonStrings {
+        let data = jsonStr.data(using: .utf8)!
+        let json = try JSONSerialization.jsonObject(with: data, options: [])
+        guard let jsonDict = json as? [String: Any] else {
+            throw NSError(domain: "Invalid JSON", code: 0, userInfo: nil)
+        }
+
+        if header.isEmpty {
+            header = Array(jsonDict.keys).sorted()  // or preserve insertion order if preferred
+        }
+
+        let row = header.map { key -> String in
+            guard let value = jsonDict[key] else {
+                return ""
+            }
+
+            switch value {
+            case let str as String:
+                // Quote only if string contains a comma, newline, or quote
+                if str.contains(",") || str.contains("\"") || str.contains("\n") {
+                    let escaped = str.replacingOccurrences(of: "\"", with: "\"\"")
+                    return "\"\(escaped)\""
+                } else {
+                    return str
+                }
+            case let number as NSNumber:
+                // NSNumber can represent Int, Float, Bool, etc.
+                return number.stringValue
+            case _ as NSNull:
+                return ""
+            default:
+                // Fallback: try to stringify (e.g., for arrays or nested objects)
+                return "\"\(value)\""
+            }
+        }.joined(separator: ",")
+
+        csvRows.append(row)
+    }
+
+    let csv = [header.joined(separator: ","), csvRows.joined(separator: "\n")]
+    return csv.joined(separator: "\n")
+}
+
+
+
+========================================
+PROJECT: data
+PATH: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/swift/data
+========================================
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/swift/data/Package.swift
+----------------------------------------
+// swift-tools-version:5.7
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+import PackageDescription
+
+let package = Package(
+    name: "SensorDataDatabases",
+    platforms: [
+        .macOS(.v12)
+    ],
+    products: [
+        .executable(name: "SensorDataDatabases", targets: ["SensorDataDatabases"])
+    ],
+    dependencies: [
+        .package(url: "https://github.com/apple/swift-cassandra-client", from: "0.8.0"),
+        .package(url: "https://github.com/orlandos-nl/MongoKitten.git", from: "7.10.0"),
+        .package(url: "https://github.com/Mordil/RediStack.git", from: "1.6.2"),
+        .package(url: "https://github.com/vapor/postgres-nio.git", from: "1.30.1"),
+        .package(url: "https://github.com/vapor/mysql-nio.git", from: "1.9.0"),
+        .package(url: "https://github.com/apple/swift-log.git", from: "1.8.0"),
+        .package(url: "https://github.com/apple/swift-nio.git", from: "2.92.1"),
+    ],
+    targets: [
+        .executableTarget(
+            name: "SensorDataDatabases",
+            dependencies: [
+                .product(name: "CassandraClient", package: "swift-cassandra-client"),
+                .product(name: "MongoKitten", package: "MongoKitten"),
+                .product(name: "RediStack", package: "RediStack"),
+                .product(name: "PostgresNIO", package: "postgres-nio"),
+                .product(name: "MySQLNIO", package: "mysql-nio"),
+                .product(name: "Logging", package: "swift-log"),
+                .product(name: "NIOCore", package: "swift-nio"),
+                .product(name: "NIOPosix", package: "swift-nio"),
+            ]
+        )
+    ]
+)
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/swift/data/Sources/SensorDataDatabases/CassandraData.swift
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+import CassandraClient
+import Foundation
+
+// import SensorDataJsonHelper
+
+class CassandraDatabase: SensorDataDatabase {
+    private var client: CassandraClient?
+
+    // Connect to the Cassandra cluster
+    func connect() async throws {
+        let configuration = CassandraClient.Configuration(
+            contactPointsProvider: { completion in
+                completion(.success(["localhost"]))
+            },
+            port: 9042,
+            protocolVersion: .v4
+        )
+        client = CassandraClient(configuration: configuration)
+    }
+
+    // Insert sensor data into the Cassandra table
+    func insert(sensorData: SensorData) async throws {
+        let query =
+            "INSERT INTO sensor_data_db.sensor_data (recorded, location, sensor, measurement, units, value) VALUES (?, ?, ?, ?, ?, ?)"
+        let params: [CassandraClient.Statement.Value] = [
+            .int64(Int64(sensorData.recorded)),
+            .string(sensorData.location),
+            .string(sensorData.sensor),
+            .string(sensorData.measurement),
+            .string(sensorData.units),
+            .double(sensorData.value),
+        ]
+        try await client?.run(query, parameters: params)
+    }
+
+    // Retrieve all sensor data from the Cassandra table
+    func selectAll() async throws -> [SensorData] {
+        let query =
+            "SELECT recorded, location, sensor, measurement, units, value FROM sensor_data_db.sensor_data"
+        guard let rows = try await client?.query(query) else { return [] }
+        return rows.map { row in
+            SensorData(
+                recorded: Int(row.column("recorded")?.int64 ?? 0),
+                location: row.column("location")?.string ?? "",
+                sensor: row.column("sensor")?.string ?? "",
+                measurement: row.column("measurement")?.string ?? "",
+                units: row.column("units")?.string ?? "",
+                value: row.column("value")?.double ?? 0.0
+            )
+        }
+    }
+
+    // Delete all sensor data from the Cassandra table
+    func deleteAll() async throws {
+        let query = "TRUNCATE sensor_data_db.sensor_data"
+        _ = try await client?.query(query)
+    }
+
+    // Close the connection to the Cassandra cluster
+    func close() async throws {
+        try? client?.shutdown()
+        client = nil
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/swift/data/Sources/SensorDataDatabases/MongoData.swift
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+import Foundation
+import MongoKitten
+
+class MongoDatabase: SensorDataDatabase {
+    private var database: MongoKitten.MongoDatabase?
+    private var collection: MongoKitten.MongoCollection?
+
+    // Connect to MongoDB server and access the database and collection
+    func connect() async throws {
+        let settings = try ConnectionSettings("mongodb://localhost:27017")
+        let connection = try await MongoConnection.connect(settings: settings)
+        database = connection["sensor_data_db"]
+        collection = database?["sensor_data"]
+    }
+
+    // Insert sensor data into the MongoDB collection
+    func insert(sensorData: SensorData) async throws {
+        guard let collection = collection else { return }
+        try await collection.insertEncoded(sensorData)
+    }
+
+    // Select all sensor data from the MongoDB collection
+    func selectAll() async throws -> [SensorData] {
+        guard let collection = collection else { return [] }
+        var results: [SensorData] = []
+        for try await doc in collection.find().decode(SensorData.self) {
+            results.append(doc)
+        }
+        return results
+    }
+
+    // Delete all sensor data from the MongoDB collection
+    func deleteAll() async throws {
+        guard let collection = collection else { return }
+        try await collection.deleteAll(where: [:])
+    }
+
+    // Close the connection to the MongoDB server
+    func close() async throws {
+        database = nil
+        collection = nil
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/swift/data/Sources/SensorDataDatabases/MySQLData.swift
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+import Foundation
+import MySQLNIO
+
+class MySQLDatabase: SensorDataDatabase {
+    private var connection: MySQLConnection?
+
+    // Establish a connection to the MySQL database
+    func connect() async throws {
+        let eventLoopGroup = MultiThreadedEventLoopGroup.singleton
+        let eventLoop = eventLoopGroup.next()
+        let address = try SocketAddress.makeAddressResolvingHost("localhost", port: 3306)
+        let logger = Logger(label: "MySQLNIO_Connection")
+        var tlsConfiguration = TLSConfiguration.makeClientConfiguration()
+        tlsConfiguration.certificateVerification = .none
+        let connectFuture = MySQLConnection.connect(
+            to: address,
+            username: "root",
+            database: "sensor_data_db",
+            password: "",
+            tlsConfiguration: tlsConfiguration,
+            serverHostname: nil,
+            logger: logger,
+            on: eventLoop
+        )
+        connection = try await awaitFuture(connectFuture)
+    }
+
+    // Insert a new sensor data record into the database
+    func insert(sensorData: SensorData) async throws {
+        let sql =
+            "INSERT INTO sensor_data (recorded, location, sensor, measurement, units, value) VALUES (?, ?, ?, ?, ?, ?)"
+        let params: [MySQLData] = [
+            MySQLData(int: sensorData.recorded),
+            MySQLData(string: sensorData.location),
+            MySQLData(string: sensorData.sensor),
+            MySQLData(string: sensorData.measurement),
+            MySQLData(string: sensorData.units),
+            MySQLData(double: sensorData.value),
+        ]
+        _ = try await awaitFuture(connection!.query(sql, params))
+    }
+
+    // Select all sensor data records from the database
+    func selectAll() async throws -> [SensorData] {
+        let sql = "SELECT recorded, location, sensor, measurement, units, value FROM sensor_data"
+        let rows = try await awaitFuture(connection!.query(sql))
+        return rows.map { row in
+            SensorData(
+                recorded: row.column("recorded")?.int ?? 0,
+                location: row.column("location")?.string ?? "",
+                sensor: row.column("sensor")?.string ?? "",
+                measurement: row.column("measurement")?.string ?? "",
+                units: row.column("units")?.string ?? "",
+                value: row.column("value")?.double ?? 0.0
+            )
+        }
+    }
+
+    // Delete all sensor data records from the database
+    func deleteAll() async throws {
+        let sql = "DELETE FROM sensor_data"
+        _ = try await awaitFuture(connection!.query(sql))
+    }
+
+    // Close the database connection and clean up resources
+    func close() async throws {
+        _ = try await awaitFuture(connection!.close())
+        connection = nil
+    }
+}
+
+// Helper for bridging EventLoopFuture to async/await
+func awaitFuture<T>(_ future: EventLoopFuture<T>) async throws -> T {
+    return try await withCheckedThrowingContinuation { continuation in
+        future.whenComplete { result in
+            switch result {
+            case .success(let value):
+                continuation.resume(returning: value)
+            case .failure(let error):
+                continuation.resume(throwing: error)
+            }
+        }
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/swift/data/Sources/SensorDataDatabases/PostgresData.swift
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+import Foundation
+import Logging
+import PostgresNIO
+
+class PostgresDatabase: SensorDataDatabase {
+    private var eventLoopGroup: EventLoopGroup?
+    private var eventLoop: EventLoop?
+    private var connection: PostgresConnection?
+
+    // Establish a connection to the PostgreSQL database
+    func connect() async throws {
+        eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        eventLoop = eventLoopGroup?.next()
+        let logger = Logger(label: "PostgresNIO_Connection")
+        let configuration = PostgresConnection.Configuration(
+            host: "localhost",
+            port: 5432,
+            username: "postgres",
+            password: "postgres",
+            database: "sensor_data_db",
+            tls: .disable
+        )
+        connection = try await awaitPostgresFuture(
+            PostgresConnection.connect(
+                on: eventLoop!,
+                configuration: configuration,
+                id: 1,
+                logger: logger
+            )
+        )
+    }
+
+    // Insert a new sensor data record into the database
+    func insert(sensorData: SensorData) async throws {
+        let insertSQL = """
+                INSERT INTO sensor_data (recorded, location, sensor, measurement, units, value)
+                VALUES ($1, $2, $3, $4, $5, $6)
+            """
+        let insertParams: [PostgresData] = [
+            PostgresData(int64: Int64(sensorData.recorded)),
+            PostgresData(string: sensorData.location),
+            PostgresData(string: sensorData.sensor),
+            PostgresData(string: sensorData.measurement),
+            PostgresData(string: sensorData.units),
+            PostgresData(double: sensorData.value),
+        ]
+        _ = try await awaitPostgresFuture(connection!.query(insertSQL, insertParams))
+    }
+
+    // Select all sensor data records from the database
+    func selectAll() async throws -> [SensorData] {
+        var results: [SensorData] = []
+        let selectSQL = """
+            SELECT recorded, location, sensor, measurement, units, value::DOUBLE PRECISION AS value
+            FROM sensor_data
+            """
+        do {
+            let queryResult = try await awaitPostgresFuture(connection!.query(selectSQL))
+            for rawRow in queryResult.rows {
+                let row = PostgresRandomAccessRow(rawRow)
+                let recorded = try row["recorded"].decode(Int64?.self) ?? 0
+                let location = try row["location"].decode(String?.self) ?? ""
+                let sensor = try row["sensor"].decode(String?.self) ?? ""
+                let measurement = try row["measurement"].decode(String?.self) ?? ""
+                let units = try row["units"].decode(String?.self) ?? ""
+                let value = try row["value"].decode(Double?.self) ?? 0.0
+                let sensorData = SensorData(
+                    recorded: Int(recorded),
+                    location: location,
+                    sensor: sensor,
+                    measurement: measurement,
+                    units: units,
+                    value: value
+                )
+                results.append(sensorData)
+            }
+        } catch {
+            print("Error decoding data: \(String(reflecting: error))")
+            throw error
+        }
+        return results
+    }
+
+    // Delete all sensor data records from the database
+    func deleteAll() async throws {
+        let deleteSQL = "TRUNCATE TABLE sensor_data"
+        _ = try await awaitPostgresFuture(connection!.query(deleteSQL))
+    }
+
+    // Close the database connection and clean up resources
+    func close() async throws {
+        if let connection = connection {
+            try await awaitPostgresFuture(connection.close())
+            self.connection = nil
+        }
+        if let eventLoopGroup = eventLoopGroup {
+            try await eventLoopGroup.shutdownGracefully()
+            self.eventLoopGroup = nil
+            self.eventLoop = nil
+        }
+    }
+}
+
+// Helper for bridging EventLoopFuture to async/await
+func awaitPostgresFuture<T>(_ future: EventLoopFuture<T>) async throws -> T {
+    return try await withCheckedThrowingContinuation { continuation in
+        future.whenComplete { result in
+            switch result {
+            case .success(let value):
+                continuation.resume(returning: value)
+            case .failure(let error):
+                continuation.resume(throwing: error)
+            }
+        }
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/swift/data/Sources/SensorDataDatabases/RedisData.swift
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+import Foundation
+import NIO
+@preconcurrency import RediStack
+
+// import SensorDataJsonHelper
+
+class RedisDatabase: SensorDataDatabase {
+    private var connection: RedisConnection?
+
+    // Connect to the Redis server
+    func connect() async throws {
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        let future = RedisConnection.make(
+            configuration: try RedisConnection.Configuration(hostname: "localhost", port: 6379),
+            boundEventLoop: group.next()
+        )
+        connection = try await future.get()
+    }
+
+    // Insert sensor data as a JSON string into a Redis list
+    func insert(sensorData: SensorData) async throws {
+        let encoder = JSONEncoder()
+        let jsonString = String(data: try encoder.encode(sensorData), encoding: .utf8)!
+        _ = try await connection?.rpush(jsonString, into: RedisKey("sensor_data")).get()
+    }
+
+    // Retrieve all sensor data from the Redis list and decode from JSON strings
+    func selectAll() async throws -> [SensorData] {
+        let respValues =
+            try await connection?.lrange(
+                from: RedisKey("sensor_data"), firstIndex: 0, lastIndex: -1
+            ).get() ?? []
+        let decoder = JSONDecoder()
+        var results: [SensorData] = []
+        for value in respValues {
+            if let rawString = value.string, let data = rawString.data(using: .utf8) {
+                if let sensorData = try? decoder.decode(SensorData.self, from: data) {
+                    results.append(sensorData)
+                }
+            }
+        }
+        return results
+    }
+
+    // Delete all sensor data from the Redis list
+    func deleteAll() async throws {
+        _ = try await connection?.delete(RedisKey("sensor_data")).get()
+    }
+
+    // Close the connection to the Redis server
+    func close() async throws {
+        connection = nil
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/swift/data/Sources/SensorDataDatabases/SensorDataDatabase.swift
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+import Foundation
+
+protocol SensorDataDatabase {
+    func connect() async throws
+    func insert(sensorData: SensorData) async throws
+    func selectAll() async throws -> [SensorData]
+    func deleteAll() async throws
+    func close() async throws
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/swift/data/Sources/SensorDataDatabases/SensorDataJsonHelper.swift
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+import Foundation
+
+// Define the structure for sensor data
+public struct SensorData: Codable {
+    var recorded: Int
+    var location: String
+    var sensor: String
+    var measurement: String
+    var units: String
+    var value: Double
+}
+
+// Generate random sensor data for testing
+public func get_random_sensor_data() -> SensorData {
+    SensorData(
+        recorded: Int(Date().timeIntervalSince1970),
+        location: "den",
+        sensor: "bmp280",
+        measurement: "temperature",
+        units: "C",
+        value: Double(round(10 * Double.random(in: 22.4...32.1)) / 10)
+    )
+}
+
+// Run the full database workflow
+func runDatabaseWorkflow(db: SensorDataDatabase) async throws {
+    try await db.connect()
+    print("Connected to database.")
+    let sensorData = get_random_sensor_data()
+    try await db.insert(sensorData: sensorData)
+    print("Inserted sensor data")
+    let allData = try await db.selectAll()
+    let jsonStrings = allData.map { data in
+        let encoder = JSONEncoder()
+        return String(data: try! encoder.encode(data), encoding: .utf8)!
+    }
+    print("Selected all sensor data:")
+    print(try jsonStringsToCSV(jsonStrings: jsonStrings))
+    try await db.deleteAll()
+    print("Deleted all sensor data.")
+    try await db.close()
+}
+
+// Convert an array of JSON strings to CSV format
+public func jsonStringsToCSV(jsonStrings: [String]) throws -> String {
+    var csvRows = [String]()
+    var header = [String]()
+
+    for jsonStr in jsonStrings {
+        let data = jsonStr.data(using: .utf8)!
+        let json = try JSONSerialization.jsonObject(with: data, options: [])
+        guard let jsonDict = json as? [String: Any] else {
+            throw NSError(domain: "Invalid JSON", code: 0, userInfo: nil)
+        }
+
+        if header.isEmpty {
+            header = Array(jsonDict.keys).sorted()
+        }
+
+        let row = header.map { key -> String in
+            guard let value = jsonDict[key] else { return "" }
+            switch value {
+            case let str as String:
+                if str.contains(",") || str.contains("\"") || str.contains("\n") {
+                    let escaped = str.replacingOccurrences(of: "\"", with: "\"\"")
+                    return "\"\(escaped)\""
+                } else {
+                    return str
+                }
+            case let number as NSNumber:
+                return number.stringValue
+            case _ as NSNull:
+                return ""
+            default:
+                return "\"\(value)\""
+            }
+        }.joined(separator: ",")
+
+        csvRows.append(row)
+    }
+
+    let csv = [header.joined(separator: ","), csvRows.joined(separator: "\n")]
+    return csv.joined(separator: "\n")
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/swift/data/Sources/SensorDataDatabases/main.swift
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+import Foundation
+
+let databases: [SensorDataDatabase] = [
+    CassandraDatabase(),
+    MongoDatabase(),
+    MySQLDatabase(),
+    PostgresDatabase(),
+    RedisDatabase(),
+]
+let dbNames = ["Cassandra", "MongoDB", "MySQL", "PostgreSQL", "Redis"]
+
+Task {
+    for (index, db) in databases.enumerated() {
+        print("\n--- Running workflow for \(dbNames[index]) ---")
+        do {
+            try await runDatabaseWorkflow(db: db)
+        } catch {
+            print("Error running workflow for \(dbNames[index]): \(error)")
+        }
+    }
+    print("\nAll workflows complete.")
+    exit(0)
+}
+
+// Keep the process alive until the async work is done
+dispatchMain()
+
+
+

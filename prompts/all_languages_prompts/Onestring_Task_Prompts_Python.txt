@@ -1,0 +1,618 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+===============================================================================
+PYTHON - FIRST FRAMEWORK (FLASK)
+===============================================================================
+
+TASK 1 - PYTHON DATA (MONGO)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. Create a python function to connect to a mongo database
+  2. Create a python function that will store the following string into a mongo database
+  3. Create a python function that will retrieve the following string from a mongo database
+  4. Create a python function that will delete the following string from a mongo database
+  5. Create a main function that will call each of the functions
+  6. Create a requirements.txt file to include all requirements in this source file
+  7. Modify all five methods into one source file using this string as the string that is being stored:
+
+  A. Create a python function that will update any value in the key value pair of a mutable dictionary
+  B. Create a python function that will generate a random number between 22.4 and 34.1, limited to one decimal place of precision
+  C. Create a python function that will generate the integer value of the current Unix Epoch Timestamp
+  D. Create a python function that will update both the "recorded" value with the current Unix Epoch Timestamp, and the "value" with a random number between 22.4 and 34.1, using the following string as input:
+  E. Modify the original code to pass-in/insert a randomized string into the mongo database each time the code is run
+  F. Create a python function that will remove any key/value pair from a dictionary (like "id" or "_id")
+  G. Combine all of the above to create a small helper file that works with the OneString JSON data (generate sample data, validate required fields, and convert JSON to CSV). This helper should be simple utility code and can be called directly.
+
+
+TASK 2 - PYTHON API (MONGO)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. create a very basic web app using the python language flask framework
+  2. what would the requirements.txt file look like for this main.py file
+  3. how do i modify the flask app to bind to any ip address and a specific port when it runs
+  4. add routes for the following:
+      GET /
+      POST /echo
+      POST /log
+      GET /report
+      POST or GET /purge
+  A. return the exact same JSON object that is sent in on the HTTP POST request
+  B. create a static string constant for the following JSON structure:
+        { "recorded" : 1768570200, "location" : "den", "sensor" : "bmp280", "measurement" : "temperature", "units" : "C", "value" : 22.3 }
+  C. create a method or function to convert a json string to a csv string, using the keys as the column names
+  D. can you do this without using the crate csv
+  E. return the csv string as a downloadable file, be sure to modify the headers of the response
+  F. return string message as a JSON object
+  G. use the WGET/CURL test script you created above to generate a postman file for importing the API endpoints
+
+
+TASK 3 - PYTHON ACCESS (MONGO)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. write a Python interface, using the ABC technique, for sensor data access with three abstract methods: log, fetch, and purge, using JSON strings and type hints.
+  2. create a class that implements the sensor data access protocol interface for mongo_data_access.py
+  3. in a main.py file, create an instance of the mongo_data_access class and call the log, fetch, and purge methods
+  4. what would the requirements.txt file look like for this main.py file
+
+
+TASK 4 - PYTHON LEGOS (MONGO)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  I. copy the entire api solution from the previous exercise ./python/api/flask-app into ./python/legos
+  II. copy only the mongo_data_access.py, sensor_data_access_protocol.py from the previous exercise ./python/access into ./python/legos
+  III. copy only the sensor_data_helper.py from the previous exercise ./python/data into ./python/legos
+  NOTE: for III above, this code came from "EXTRA PROMPTS TO TRY:" letter "G" in task 1 "DATA"
+
+  1. in each of the three functions of mongo_data_access.py (log_sensor_data, fetch_sensor_data, purge_sensor_data) create a connection to the mongo database, use the same/similar logic for connecting to a mongo database found in the mongo_data.py source file
+  2. in the mongo_data_access.py's log_sensor_data, take the "json_data: str" being passed in to the log_sensor_data() function to populate the params of the insert, use the same/similar logic for inserting sensor data into a mongo database found in the mongo_data.py source file
+  3. in the mongo_data_access.py's fetch_sensor_data, create a list[str] of JSON strings resulting from the select to a mongo collection as the return for fetch_sensor_data(), use the same/similar logic for selecting sensor data from a mongo database found in the mongo_data.py source file
+  4. in the mongo_data_access.py's purge_sensor_data, delete/truncate all data in the sensor data collection, use the same/similar logic for deleting/truncating sensor data from a mongo database found in the mongo_data.py source file
+  5. Reuse the OneString helper from earlier tasks for generating, validating, and formatting data. Treat it as a simple utility that can be called directly from the application code.
+
+  A. Using the ABC for sensor_data_access_protocol, implement a method to instantiate a new sensor data access object based on an environment variable.
+  B. Implement a better logging mechanism for the sensor data access object.
+
+
+===============================================================================
+
+TASK 1 - PYTHON DATA (CASSANDRA)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. Create a python function to connect to a cassandra database
+  2. Create a python function that will store the following string into a cassandra database
+  3. Create a python function that will retrieve the following string from a cassandra database
+  4. Create a python function that will delete the following string from a cassandra database
+  5. Create a main function that will call each of the functions
+  6. Create a requirements.txt file to include all requirements in this source file
+  7. Modify all five methods into one source file using this string as the string that is being stored:
+
+  A. Create a python function that will update any value in the key value pair of a mutable dictionary
+  B. Create a python function that will generate a random number between 22.4 and 34.1, limited to one decimal place of precision
+  C. Create a python function that will generate the integer value of the current Unix Epoch Timestamp
+  D. Create a python function that will update both the "recorded" value with the current Unix Epoch Timestamp, and the "value" with a random number between 22.4 and 34.1, using the following string as input:
+  E. Modify the original code to pass-in/insert a randomized string into the cassandra database each time the code is run
+  F. Create a python function that will remove any key/value pair from a dictionary (like "id" or "_id")
+  G. Combine all of the above to create a small helper file that works with the OneString JSON data (generate sample data, validate required fields, and convert JSON to CSV). This helper should be simple utility code and can be called directly.
+
+
+TASK 2 - PYTHON API (CASSANDRA)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. create a very basic web app using the python language flask framework
+  2. what would the requirements.txt file look like for this main.py file
+  3. how do i modify the flask app to bind to any ip address and a specific port when it runs
+  4. add routes for the following:
+      GET /
+      POST /echo
+      POST /log
+      GET /report
+      POST or GET /purge
+  A. return the exact same JSON object that is sent in on the HTTP POST request
+  B. create a static string constant for the following JSON structure:
+        { "recorded" : 1768570200, "location" : "den", "sensor" : "bmp280", "measurement" : "temperature", "units" : "C", "value" : 22.3 }
+  C. create a method or function to convert a json string to a csv string, using the keys as the column names
+  D. can you do this without using the crate csv
+  E. return the csv string as a downloadable file, be sure to modify the headers of the response
+  F. return string message as a JSON object
+  G. use the WGET/CURL test script you created above to generate a postman file for importing the API endpoints
+
+
+TASK 3 - PYTHON ACCESS (CASSANDRA)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. write a Python interface, using the ABC technique, for sensor data access with three abstract methods: log, fetch, and purge, using JSON strings and type hints.
+  2. create a class that implements the sensor data access protocol interface for cassandra_data_access.py
+  3. in a main.py file, create an instance of the cassandra_data_access class and call the log, fetch, and purge methods
+  4. what would the requirements.txt file look like for this main.py file
+
+
+TASK 4 - PYTHON LEGOS (CASSANDRA)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  I. copy the entire api solution from the previous exercise ./python/api/flask-app into ./python/legos
+  II. copy only the cassandra_data_access.py, sensor_data_access_protocol.py from the previous exercise ./python/access into ./python/legos
+  III. copy only the sensor_data_helper.py from the previous exercise ./python/data into ./python/legos
+  NOTE: for III above, this code came from "EXTRA PROMPTS TO TRY:" letter "G" in task 1 "DATA"
+
+  1. in each of the three functions of cassandra_data_access.py (log_sensor_data, fetch_sensor_data, purge_sensor_data) create a connection to the cassandra database, use the same/similar logic for connecting to a cassandra database found in the cassandra_data.py source file
+  2. in the cassandra_data_access.py's log_sensor_data, take the "json_data: str" being passed in to the log_sensor_data() function to populate the params of the insert, use the same/similar logic for inserting sensor data into a cassandra database found in the cassandra_data.py source file
+  3. in the cassandra_data_access.py's fetch_sensor_data, create a list[str] of JSON strings resulting from the select to a cassandra table as the return for fetch_sensor_data(), use the same/similar logic for selecting sensor data from a cassandra database found in the cassandra_data.py source file
+  4. in the cassandra_data_access.py's purge_sensor_data, delete/truncate all data in the sensor data table, use the same/similar logic for deleting/truncating sensor data from a cassandra database found in the cassandra_data.py source file
+  5. Reuse the OneString helper from earlier tasks for generating, validating, and formatting data. Treat it as a simple utility that can be called directly from the application code.
+
+  A. Using the ABC for sensor_data_access_protocol, implement a method to instantiate a new sensor data access object based on an environment variable.
+  B. Implement a better logging mechanism for the sensor data access object.
+
+
+===============================================================================
+
+
+TASK 1 - PYTHON DATA (MYSQL)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. Create a python function to connect to a mysql database
+  2. Create a python function that will store the following string into a mysql database
+  3. Create a python function that will retrieve the following string from a mysql database
+  4. Create a python function that will delete the following string from a mysql database
+  5. Create a main function that will call each of the functions
+  6. Create a requirements.txt file to include all requirements in this source file
+  7. Modify all five methods into one source file using this string as the string that is being stored:
+
+  A. Create a python function that will update any value in the key value pair of a mutable dictionary
+  B. Create a python function that will generate a random number between 22.4 and 34.1, limited to one decimal place of precision
+  C. Create a python function that will generate the integer value of the current Unix Epoch Timestamp
+  D. Create a python function that will update both the "recorded" value with the current Unix Epoch Timestamp, and the "value" with a random number between 22.4 and 34.1, using the following string as input:
+  E. Modify the original code to pass-in/insert a randomized string into the mysql database each time the code is run
+  F. Create a python function that will remove any key/value pair from a dictionary (like "id" or "_id")
+  G. Combine all of the above to create a small helper file that works with the OneString JSON data (generate sample data, validate required fields, and convert JSON to CSV). This helper should be simple utility code and can be called directly.
+
+
+TASK 2 - PYTHON API (MYSQL)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. create a very basic web app using the python language flask framework
+  2. what would the requirements.txt file look like for this main.py file
+  3. how do i modify the flask app to bind to any ip address and a specific port when it runs
+  4. add routes for the following:
+      GET /
+      POST /echo
+      POST /log
+      GET /report
+      POST or GET /purge
+  A. return the exact same JSON object that is sent in on the HTTP POST request
+  B. create a static string constant for the following JSON structure:
+        { "recorded" : 1768570200, "location" : "den", "sensor" : "bmp280", "measurement" : "temperature", "units" : "C", "value" : 22.3 }
+  C. create a method or function to convert a json string to a csv string, using the keys as the column names
+  D. can you do this without using the crate csv
+  E. return the csv string as a downloadable file, be sure to modify the headers of the response
+  F. return string message as a JSON object
+  G. use the WGET/CURL test script you created above to generate a postman file for importing the API endpoints
+
+
+TASK 3 - PYTHON ACCESS (MYSQL)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. write a Python interface, using the ABC technique, for sensor data access with three abstract methods: log, fetch, and purge, using JSON strings and type hints.
+  2. create a class that implements the sensor data access protocol interface for mysql_data_access.py
+  3. in a main.py file, create an instance of the mysql_data_access class and call the log, fetch, and purge methods
+  4. what would the requirements.txt file look like for this main.py file
+
+
+TASK 4 - PYTHON LEGOS (MYSQL)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  I. copy the entire api solution from the previous exercise ./python/api/flask-app into ./python/legos
+  II. copy only the mysql_data_access.py, sensor_data_access_protocol.py from the previous exercise ./python/access into ./python/legos
+  III. copy only the sensor_data_helper.py from the previous exercise ./python/data into ./python/legos
+  NOTE: for III above, this code came from "EXTRA PROMPTS TO TRY:" letter "G" in task 1 "DATA"
+
+  1. in each of the three functions of mysql_data_access.py (log_sensor_data, fetch_sensor_data, purge_sensor_data) create a connection to the mysql database, use the same/similar logic for connecting to a mysql database found in the mysql_data.py source file
+  2. in the mysql_data_access.py's log_sensor_data, take the "json_data: str" being passed in to the log_sensor_data() function to populate the params of the insert, use the same/similar logic for inserting sensor data into a mysql database found in the mysql_data.py source file
+  3. in the mysql_data_access.py's fetch_sensor_data, create a list[str] of JSON strings resulting from the select to a mysql table as the return for fetch_sensor_data(), use the same/similar logic for selecting sensor data from a mysql database found in the mysql_data.py source file
+  4. in the mysql_data_access.py's purge_sensor_data, delete/truncate all data in the sensor data table, use the same/similar logic for deleting/truncating sensor data from a mysql database found in the mysql_data.py source file
+  5. Reuse the OneString helper from earlier tasks for generating, validating, and formatting data. Treat it as a simple utility that can be called directly from the application code.
+
+  A. Using the ABC for sensor_data_access_protocol, implement a method to instantiate a new sensor data access object based on an environment variable.
+  B. Implement a better logging mechanism for the sensor data access object.
+
+
+===============================================================================
+
+
+TASK 1 - PYTHON DATA (POSTGRES)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. Create a python function to connect to a postgres database
+  2. Create a python function that will store the following string into a postgres database
+  3. Create a python function that will retrieve the following string from a postgres database
+  4. Create a python function that will delete the following string from a postgres database
+  5. Create a main function that will call each of the functions
+  6. Create a requirements.txt file to include all requirements in this source file
+  7. Modify all five methods into one source file using this string as the string that is being stored:
+
+  A. Create a python function that will update any value in the key value pair of a mutable dictionary
+  B. Create a python function that will generate a random number between 22.4 and 34.1, limited to one decimal place of precision
+  C. Create a python function that will generate the integer value of the current Unix Epoch Timestamp
+  D. Create a python function that will update both the "recorded" value with the current Unix Epoch Timestamp, and the "value" with a random number between 22.4 and 34.1, using the following string as input:
+  E. Modify the original code to pass-in/insert a randomized string into the postgres database each time the code is run
+  F. Create a python function that will remove any key/value pair from a dictionary (like "id" or "_id")
+  G. Combine all of the above to create a small helper file that works with the OneString JSON data (generate sample data, validate required fields, and convert JSON to CSV). This helper should be simple utility code and can be called directly.
+
+
+TASK 2 - PYTHON API (POSTGRES)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. create a very basic web app using the python language flask framework
+  2. what would the requirements.txt file look like for this main.py file
+  3. how do i modify the flask app to bind to any ip address and a specific port when it runs
+  4. add routes for the following:
+      GET /
+      POST /echo
+      POST /log
+      GET /report
+      POST or GET /purge
+  A. return the exact same JSON object that is sent in on the HTTP POST request
+  B. create a static string constant for the following JSON structure:
+        { "recorded" : 1768570200, "location" : "den", "sensor" : "bmp280", "measurement" : "temperature", "units" : "C", "value" : 22.3 }
+  C. create a method or function to convert a json string to a csv string, using the keys as the column names
+  D. can you do this without using the crate csv
+  E. return the csv string as a downloadable file, be sure to modify the headers of the response
+  F. return string message as a JSON object
+  G. use the WGET/CURL test script you created above to generate a postman file for importing the API endpoints
+
+
+TASK 3 - PYTHON ACCESS (POSTGRES)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. write a Python interface, using the ABC technique, for sensor data access with three abstract methods: log, fetch, and purge, using JSON strings and type hints.
+  2. create a class that implements the sensor data access protocol interface for postgres_data_access.py
+  3. in a main.py file, create an instance of the postgres_data_access class and call the log, fetch, and purge methods
+  4. what would the requirements.txt file look like for this main.py file
+
+
+TASK 4 - PYTHON LEGOS (POSTGRES)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  I. copy the entire api solution from the previous exercise ./python/api/flask-app into ./python/legos
+  II. copy only the postgres_data_access.py, sensor_data_access_protocol.py from the previous exercise ./python/access into ./python/legos
+  III. copy only the sensor_data_helper.py from the previous exercise ./python/data into ./python/legos
+  NOTE: for III above, this code came from "EXTRA PROMPTS TO TRY:" letter "G" in task 1 "DATA"
+
+  1. in each of the three functions of postgres_data_access.py (log_sensor_data, fetch_sensor_data, purge_sensor_data) create a connection to the postgres database, use the same/similar logic for connecting to a postgres database found in the postgres_data.py source file
+  2. in the postgres_data_access.py's log_sensor_data, take the "json_data: str" being passed in to the log_sensor_data() function to populate the params of the insert, use the same/similar logic for inserting sensor data into a postgres database found in the postgres_data.py source file
+  3. in the postgres_data_access.py's fetch_sensor_data, create a list[str] of JSON strings resulting from the select to a postgres table as the return for fetch_sensor_data(), use the same/similar logic for selecting sensor data from a postgres database found in the postgres_data.py source file
+  4. in the postgres_data_access.py's purge_sensor_data, delete/truncate all data in the sensor data table, use the same/similar logic for deleting/truncating sensor data from a postgres database found in the postgres_data.py source file
+  5. Reuse the OneString helper from earlier tasks for generating, validating, and formatting data. Treat it as a simple utility that can be called directly from the application code.
+
+  A. Using the ABC for sensor_data_access_protocol, implement a method to instantiate a new sensor data access object based on an environment variable.
+  B. Implement a better logging mechanism for the sensor data access object.
+
+
+===============================================================================
+
+
+TASK 1 - PYTHON DATA (REDIS)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. Create a python function to connect to a redis database
+  2. Create a python function that will store the following string into a redis database
+  3. Create a python function that will retrieve the following string from a redis database
+  4. Create a python function that will delete the following string from a redis database
+  5. Create a main function that will call each of the functions
+  6. Create a requirements.txt file to include all requirements in this source file
+  7. Modify all five methods into one source file using this string as the string that is being stored:
+
+  A. Create a python function that will update any value in the key value pair of a mutable dictionary
+  B. Create a python function that will generate a random number between 22.4 and 34.1, limited to one decimal place of precision
+  C. Create a python function that will generate the integer value of the current Unix Epoch Timestamp
+  D. Create a python function that will update both the "recorded" value with the current Unix Epoch Timestamp, and the "value" with a random number between 22.4 and 34.1, using the following string as input:
+  E. Modify the original code to pass-in/insert a randomized string into the redis database each time the code is run
+  F. Create a python function that will remove any key/value pair from a dictionary (like "id" or "_id")
+  G. Combine all of the above to create a small helper file that works with the OneString JSON data (generate sample data, validate required fields, and convert JSON to CSV). This helper should be simple utility code and can be called directly.
+
+
+TASK 2 - PYTHON API (REDIS)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. create a very basic web app using the python language flask framework
+  2. what would the requirements.txt file look like for this main.py file
+  3. how do i modify the flask app to bind to any ip address and a specific port when it runs
+  4. add routes for the following:
+      GET /
+      POST /echo
+      POST /log
+      GET /report
+      POST or GET /purge
+  A. return the exact same JSON object that is sent in on the HTTP POST request
+  B. create a static string constant for the following JSON structure:
+        { "recorded" : 1768570200, "location" : "den", "sensor" : "bmp280", "measurement" : "temperature", "units" : "C", "value" : 22.3 }
+  C. create a method or function to convert a json string to a csv string, using the keys as the column names
+  D. can you do this without using the crate csv
+  E. return the csv string as a downloadable file, be sure to modify the headers of the response
+  F. return string message as a JSON object
+  G. use the WGET/CURL test script you created above to generate a postman file for importing the API endpoints
+
+
+TASK 3 - PYTHON ACCESS (REDIS)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. write a Python interface, using the ABC technique, for sensor data access with three abstract methods: log, fetch, and purge, using JSON strings and type hints.
+  2. create a class that implements the sensor data access protocol interface for redis_data_access.py
+  3. in a main.py file, create an instance of the redis_data_access class and call the log, fetch, and purge methods
+  4. what would the requirements.txt file look like for this main.py file
+
+
+TASK 4 - PYTHON LEGOS (REDIS)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  I. copy the entire api solution from the previous exercise ./python/api/flask-app into ./python/legos
+  II. copy only the redis_data_access.py, sensor_data_access_protocol.py from the previous exercise ./python/access into ./python/legos
+  III. copy only the sensor_data_helper.py from the previous exercise ./python/data into ./python/legos
+  NOTE: for III above, this code came from "EXTRA PROMPTS TO TRY:" letter "G" in task 1 "DATA"
+
+  1. in each of the three functions of redis_data_access.py (log_sensor_data, fetch_sensor_data, purge_sensor_data) create a connection to the redis database, use the same/similar logic for connecting to a redis database found in the redis_data.py source file
+  2. in the redis_data_access.py's log_sensor_data, take the "json_data: str" being passed in to the log_sensor_data() function to populate the params of the insert, use the same/similar logic for inserting sensor data into a redis database found in the redis_data.py source file
+  3. in the redis_data_access.py's fetch_sensor_data, create a list[str] of JSON strings resulting from the select to a redis list as the return for fetch_sensor_data(), use the same/similar logic for selecting sensor data from a redis database found in the redis_data.py source file
+  4. in the redis_data_access.py's purge_sensor_data, delete/truncate all data in the sensor data list, use the same/similar logic for deleting/truncating sensor data from a redis database found in the redis_data.py source file
+  5. Reuse the OneString helper from earlier tasks for generating, validating, and formatting data. Treat it as a simple utility that can be called directly from the application code.
+
+  A. Using the ABC for sensor_data_access_protocol, implement a method to instantiate a new sensor data access object based on an environment variable.
+  B. Implement a better logging mechanism for the sensor data access object.
+
+
+===============================================================================
+PYTHON - SECOND FRAMEWORK (DJANGO)
+===============================================================================
+
+TASK 2 - PYTHON API (CASSANDRA) - DJANGO
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. create a very basic web app using the python language django framework
+  2. what would the requirements.txt file look like for this main.py file
+  3. how do i modify the django app to bind to any ip address and a specific port when it runs
+  4. add routes for the following:
+      GET /
+      POST /echo
+      POST /log
+      GET /report
+      POST or GET /purge
+  A. return the exact same JSON object that is sent in on the HTTP POST request
+  B. create a static string constant for the following JSON structure:
+        { "recorded" : 1768570200, "location" : "den", "sensor" : "bmp280", "measurement" : "temperature", "units" : "C", "value" : 22.3 }
+  C. create a method or function to convert a json string to a csv string, using the keys as the column names
+  D. can you do this without using the crate csv
+  E. return the csv string as a downloadable file, be sure to modify the headers of the response
+  F. return string message as a JSON object
+  G. use the WGET/CURL test script you created above to generate a postman file for importing the API endpoints
+
+
+TASK 2 - PYTHON API (MYSQL) - DJANGO
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. create a very basic web app using the python language django framework
+  2. what would the requirements.txt file look like for this main.py file
+  3. how do i modify the django app to bind to any ip address and a specific port when it runs
+  4. add routes for the following:
+      GET /
+      POST /echo
+      POST /log
+      GET /report
+      POST or GET /purge
+  A. return the exact same JSON object that is sent in on the HTTP POST request
+  B. create a static string constant for the following JSON structure:
+        { "recorded" : 1768570200, "location" : "den", "sensor" : "bmp280", "measurement" : "temperature", "units" : "C", "value" : 22.3 }
+  C. create a method or function to convert a json string to a csv string, using the keys as the column names
+  D. can you do this without using the crate csv
+  E. return the csv string as a downloadable file, be sure to modify the headers of the response
+  F. return string message as a JSON object
+  G. use the WGET/CURL test script you created above to generate a postman file for importing the API endpoints
+
+
+TASK 2 - PYTHON API (POSTGRES) - DJANGO
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. create a very basic web app using the python language django framework
+  2. what would the requirements.txt file look like for this main.py file
+  3. how do i modify the django app to bind to any ip address and a specific port when it runs
+  4. add routes for the following:
+      GET /
+      POST /echo
+      POST /log
+      GET /report
+      POST or GET /purge
+  A. return the exact same JSON object that is sent in on the HTTP POST request
+  B. create a static string constant for the following JSON structure:
+        { "recorded" : 1768570200, "location" : "den", "sensor" : "bmp280", "measurement" : "temperature", "units" : "C", "value" : 22.3 }
+  C. create a method or function to convert a json string to a csv string, using the keys as the column names
+  D. can you do this without using the crate csv
+  E. return the csv string as a downloadable file, be sure to modify the headers of the response
+  F. return string message as a JSON object
+  G. use the WGET/CURL test script you created above to generate a postman file for importing the API endpoints
+
+
+TASK 2 - PYTHON API (REDIS) - DJANGO
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. create a very basic web app using the python language django framework
+  2. what would the requirements.txt file look like for this main.py file
+  3. how do i modify the django app to bind to any ip address and a specific port when it runs
+  4. add routes for the following:
+      GET /
+      POST /echo
+      POST /log
+      GET /report
+      POST or GET /purge
+  A. return the exact same JSON object that is sent in on the HTTP POST request
+  B. create a static string constant for the following JSON structure:
+        { "recorded" : 1768570200, "location" : "den", "sensor" : "bmp280", "measurement" : "temperature", "units" : "C", "value" : 22.3 }
+  C. create a method or function to convert a json string to a csv string, using the keys as the column names
+  D. can you do this without using the crate csv
+  E. return the csv string as a downloadable file, be sure to modify the headers of the response
+  F. return string message as a JSON object
+  G. use the WGET/CURL test script you created above to generate a postman file for importing the API endpoints
+
+
+TASK 4 - PYTHON LEGOS (CASSANDRA) - DJANGO
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  This second lego assignment assumes that you have already successfully implemented and tested the Legos assignment for this language once already:
+
+  I. copy the entire api solution from the previous API exercise of the django framework
+  II. copy all of the data source files you modified in the first implementation of legos using the flask framework
+  III. cut/paste the same dependency injection function from the first implementation of legos using the flask framework
+
+  1. For each of the three functions of the django framework create a connection to the appropriate ABC for each route (/log, /report, & /purge)
+  2. Reuse the OneString helper from earlier tasks for generating, validating, and formatting data. Treat it as a simple utility that can be called directly from the application code.
+
+  NOTE: this time the ABC function for each of the databases should already be implemented
+
+
+TASK 4 - PYTHON LEGOS (MYSQL) - DJANGO
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  This second lego assignment assumes that you have already successfully implemented and tested the Legos assignment for this language once already:
+
+  I. copy the entire api solution from the previous API exercise of the django framework
+  II. copy all of the data source files you modified in the first implementation of legos using the flask framework
+  III. cut/paste the same dependency injection function from the first implementation of legos using the flask framework
+
+  1. For each of the three functions of the django framework create a connection to the appropriate ABC for each route (/log, /report, & /purge)
+  2. Reuse the OneString helper from earlier tasks for generating, validating, and formatting data. Treat it as a simple utility that can be called directly from the application code.
+
+  NOTE: this time the ABC function for each of the databases should already be implemented
+
+
+TASK 4 - PYTHON LEGOS (POSTGRES) - DJANGO
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  This second lego assignment assumes that you have already successfully implemented and tested the Legos assignment for this language once already:
+
+  I. copy the entire api solution from the previous API exercise of the django framework
+  II. copy all of the data source files you modified in the first implementation of legos using the flask framework
+  III. cut/paste the same dependency injection function from the first implementation of legos using the flask framework
+
+  1. For each of the three functions of the django framework create a connection to the appropriate ABC for each route (/log, /report, & /purge)
+  2. Reuse the OneString helper from earlier tasks for generating, validating, and formatting data. Treat it as a simple utility that can be called directly from the application code.
+
+  NOTE: this time the ABC function for each of the databases should already be implemented
+
+
+TASK 4 - PYTHON LEGOS (REDIS) - DJANGO
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  This second lego assignment assumes that you have already successfully implemented and tested the Legos assignment for this language once already:
+
+  I. copy the entire api solution from the previous API exercise of the django framework
+  II. copy all of the data source files you modified in the first implementation of legos using the flask framework
+  III. cut/paste the same dependency injection function from the first implementation of legos using the flask framework
+
+  1. For each of the three functions of the django framework create a connection to the appropriate ABC for each route (/log, /report, & /purge)
+  2. Reuse the OneString helper from earlier tasks for generating, validating, and formatting data. Treat it as a simple utility that can be called directly from the application code.
+
+  NOTE: this time the ABC function for each of the databases should already be implemented
+
+
+===============================================================================
+
+
+NOTES FOR ALL TASKS & DATABASES
++++
+
+For each task, generate the appropriate requirements.txt file for Python.
+
+For each task, be sure to follow the Python naming conventions:
+ Files, Modules - snake_case
+ Classes - UpperCamelCase
+ Functions, Methods, Variables - snake_case
+ Constants - SCREAMING_SNAKE_CASE
+
+For the Cassandra database, use the following schema for a table named "sensor_data" in a keyspace named "sensor_data_db":
+  CREATE TABLE IF NOT EXISTS sensor_data (
+   recorded bigint,
+   location text,
+   sensor text,
+   measurement text,
+   units text,
+   value double,
+   PRIMARY KEY (recorded, location, sensor)
+  );
+
+For the MySQL database, use the following schema for a table named "sensor_data" in a database named "sensor_data_db":
+  CREATE TABLE IF NOT EXISTS sensor_data (
+   recorded BIGINT NOT NULL,
+   location VARCHAR(255) NOT NULL,
+   sensor VARCHAR(255) NOT NULL,
+   measurement VARCHAR(255) NOT NULL,
+   units VARCHAR(10) NOT NULL,
+   value DECIMAL(5,2) NOT NULL
+  );
+
+For the Postgres database, use the following schema for a table named "sensor_data" in a database named "sensor_data_db":
+  CREATE TABLE IF NOT EXISTS sensor_data (
+   recorded BIGINT NOT NULL,
+   location VARCHAR(255) NOT NULL,
+   sensor VARCHAR(255) NOT NULL,
+   measurement VARCHAR(255) NOT NULL,
+   units VARCHAR(255) NOT NULL,
+   value NUMERIC(10, 2) NOT NULL
+  );
+
+For the Redis database, use the List data type by using rpush and lrange to store and retrieve for the key "sensor_data_db:sensor_data"
+
+For Python's implementation of Dependency Injection to achieve Inversion of Control, use an abstract base class (ABC)

@@ -1,0 +1,616 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025-2026 ggeoffre, LLC
+===============================================================================
+GO - FIRST FRAMEWORK (ECHO)
+===============================================================================
+
+TASK 1 - GO DATA (MONGO)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. Create a go function to connect to a mongo database
+  2. Create a go function that will store the following string into a mongo database
+  3. Create a go function that will retrieve the following string from a mongo database
+  4. Create a go function that will delete the following string from a mongo database
+  5. Create a main function that will call each of the functions
+  6. Create a go.mod file to include all requirements in this source file
+  7. Modify all five functions into one source file using this string as the string that is being stored:
+
+  A. Create a go function that will update any value in the key value pair of a mutable map
+  B. Create a go function that will generate a random number between 22.4 and 34.1, limited to one decimal place of precision
+  C. Create a go function that will generate the integer value of the current Unix Epoch Timestamp
+  D. Create a go function that will update both the "recorded" value with the current Unix Epoch Timestamp, and the "value" with a random number between 22.4 and 34.1, using the following string as input:
+  E. Modify the original code to pass-in/insert a randomized string into the mongo database each time the code is run
+  F. Create a go function that will remove any key/value pair from a map (like "id" or "_id")
+  G. Combine all of the above to create a small helper file that works with the OneString JSON data (generate sample data, validate required fields, and convert JSON to CSV). This helper should be simple utility code and can be called directly.
+
+
+TASK 2 - GO API (MONGO)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. create a very basic web app using the go language echo framework
+  2. what would the go.mod file look like for this main.go file
+  3. how do i modify the echo app to bind to any ip address and a specific port when it runs
+  4. add routes for the following:
+      GET /
+      POST /echo
+      POST /log
+      GET /report
+      POST or GET /purge
+  A. return the exact same JSON object that is sent in on the HTTP POST request
+  B. create a constant string for the following JSON structure:
+        { "recorded" : 1768570200, "location" : "den", "sensor" : "bmp280", "measurement" : "temperature", "units" : "C", "value" : 22.3 }
+  C. create a function to convert a json string to a csv string, using the keys as the column names
+  D. can you do this without using the crate csv
+  E. return the csv string as a downloadable file, be sure to modify the headers of the response
+  F. return string message as a JSON object
+  G. use the WGET/CURL test script you created above to generate a postman file for importing the API endpoints
+
+
+TASK 3 - GO ACCESS (MONGO)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. write a Go interface for sensor data access with three methods: Log, Fetch, and Purge, using JSON strings and type declarations.
+  2. create a struct that implements the sensor data access protocol interface for mongo_data_access.go
+  3. in a main.go file, create an instance of the MongoDataAccess struct and call the Log, Fetch, and Purge methods
+  4. what would the go.mod file look like for this main.go file
+
+
+TASK 4 - GO LEGOS (MONGO)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  I. copy the entire api solution from the previous exercise ./go/api/echo-app into ./go/legos
+  II. copy only the mongo_data_access.go, sensor_data_access_protocol.go from the previous exercise ./go/access into ./go/legos
+  III. copy only the sensor_data_helper.go from the previous exercise ./go/data into ./go/legos
+  NOTE: for III above, this code came from "EXTRA PROMPTS TO TRY:" letter "G" in task 1 "DATA"
+
+  1. in each of the three methods of mongo_data_access.go (LogSensorData, FetchSensorData, PurgeSensorData) create a connection to the mongo database, use the same/similar logic for connecting to a mongo database found in the mongo_data.go source file
+  2. in the mongo_data_access.go's LogSensorData, take the "jsonData string" being passed in to the LogSensorData() method to populate the params of the insert, use the same/similar logic for inserting sensor data into a mongo database found in the mongo_data.go source file
+  3. in the mongo_data_access.go's FetchSensorData, create a []string of JSON strings resulting from the select to a mongo collection as the return for FetchSensorData(), use the same/similar logic for selecting sensor data from a mongo database found in the mongo_data.go source file
+  4. in the mongo_data_access.go's PurgeSensorData, delete/truncate all data in the sensor data collection, use the same/similar logic for deleting/truncating sensor data from a mongo database found in the mongo_data.go source file
+  5. Reuse the OneString helper from earlier tasks for generating, validating, and formatting data. Treat it as a simple utility that can be called directly from the application code.
+
+  A. Using the type interface for SensorDataAccessProtocol, implement a function to instantiate a new sensor data access object based on an environment variable.
+  B. Implement a better logging mechanism for the sensor data access object.
+
+
+TASK 1 - GO DATA (CASSANDRA)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. Create a go function to connect to a cassandra database
+  2. Create a go function that will store the following string into a cassandra database
+  3. Create a go function that will retrieve the following string from a cassandra database
+  4. Create a go function that will delete the following string from a cassandra database
+  5. Create a main function that will call each of the functions
+  6. Create a go.mod file to include all requirements in this source file
+  7. Modify all five functions into one source file using this string as the string that is being stored:
+
+  A. Create a go function that will update any value in the key value pair of a mutable map
+  B. Create a go function that will generate a random number between 22.4 and 34.1, limited to one decimal place of precision
+  C. Create a go function that will generate the integer value of the current Unix Epoch Timestamp
+  D. Create a go function that will update both the "recorded" value with the current Unix Epoch Timestamp, and the "value" with a random number between 22.4 and 34.1, using the following string as input:
+  E. Modify the original code to pass-in/insert a randomized string into the cassandra database each time the code is run
+  F. Create a go function that will remove any key/value pair from a map (like "id" or "_id")
+  G. Combine all of the above to create a small helper file that works with the OneString JSON data (generate sample data, validate required fields, and convert JSON to CSV). This helper should be simple utility code and can be called directly.
+
+
+TASK 2 - GO API (CASSANDRA)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. create a very basic web app using the go language echo framework
+  2. what would the go.mod file look like for this main.go file
+  3. how do i modify the echo app to bind to any ip address and a specific port when it runs
+  4. add routes for the following:
+      GET /
+      POST /echo
+      POST /log
+      GET /report
+      POST or GET /purge
+  A. return the exact same JSON object that is sent in on the HTTP POST request
+  B. create a constant string for the following JSON structure:
+        { "recorded" : 1768570200, "location" : "den", "sensor" : "bmp280", "measurement" : "temperature", "units" : "C", "value" : 22.3 }
+  C. create a function to convert a json string to a csv string, using the keys as the column names
+  D. can you do this without using the crate csv
+  E. return the csv string as a downloadable file, be sure to modify the headers of the response
+  F. return string message as a JSON object
+  G. use the WGET/CURL test script you created above to generate a postman file for importing the API endpoints
+
+
+TASK 3 - GO ACCESS (CASSANDRA)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. write a Go interface for sensor data access with three methods: Log, Fetch, and Purge, using JSON strings and type declarations.
+  2. create a struct that implements the sensor data access protocol interface for cassandra_data_access.go
+  3. in a main.go file, create an instance of the CassandraDataAccess struct and call the Log, Fetch, and Purge methods
+  4. what would the go.mod file look like for this main.go file
+
+
+TASK 4 - GO LEGOS (CASSANDRA)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  I. copy the entire api solution from the previous exercise ./go/api/echo-app into ./go/legos
+  II. copy only the cassandra_data_access.go, sensor_data_access_protocol.go from the previous exercise ./go/access into ./go/legos
+  III. copy only the sensor_data_helper.go from the previous exercise ./go/data into ./go/legos
+  NOTE: for III above, this code came from "EXTRA PROMPTS TO TRY:" letter "G" in task 1 "DATA"
+
+  1. in each of the three methods of cassandra_data_access.go (LogSensorData, FetchSensorData, PurgeSensorData) create a connection to the cassandra database, use the same/similar logic for connecting to a cassandra database found in the cassandra_data.go source file
+  2. in the cassandra_data_access.go's LogSensorData, take the "jsonData string" being passed in to the LogSensorData() method to populate the params of the insert, use the same/similar logic for inserting sensor data into a cassandra database found in the cassandra_data.go source file
+  3. in the cassandra_data_access.go's FetchSensorData, create a []string of JSON strings resulting from the select to a cassandra table as the return for FetchSensorData(), use the same/similar logic for selecting sensor data from a cassandra database found in the cassandra_data.go source file
+  4. in the cassandra_data_access.go's PurgeSensorData, delete/truncate all data in the sensor data table, use the same/similar logic for deleting/truncating sensor data from a cassandra database found in the cassandra_data.go source file
+  5. Reuse the OneString helper from earlier tasks for generating, validating, and formatting data. Treat it as a simple utility that can be called directly from the application code.
+
+  A. Using the type interface for SensorDataAccessProtocol, implement a function to instantiate a new sensor data access object based on an environment variable.
+  B. Implement a better logging mechanism for the sensor data access object.
+
+
+===============================================================================
+
+
+TASK 1 - GO DATA (MYSQL)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. Create a go function to connect to a mysql database
+  2. Create a go function that will store the following string into a mysql database
+  3. Create a go function that will retrieve the following string from a mysql database
+  4. Create a go function that will delete the following string from a mysql database
+  5. Create a main function that will call each of the functions
+  6. Create a go.mod file to include all requirements in this source file
+  7. Modify all five functions into one source file using this string as the string that is being stored:
+
+  A. Create a go function that will update any value in the key value pair of a mutable map
+  B. Create a go function that will generate a random number between 22.4 and 34.1, limited to one decimal place of precision
+  C. Create a go function that will generate the integer value of the current Unix Epoch Timestamp
+  D. Create a go function that will update both the "recorded" value with the current Unix Epoch Timestamp, and the "value" with a random number between 22.4 and 34.1, using the following string as input:
+  E. Modify the original code to pass-in/insert a randomized string into the mysql database each time the code is run
+  F. Create a go function that will remove any key/value pair from a map (like "id" or "_id")
+  G. Combine all of the above to create a small helper file that works with the OneString JSON data (generate sample data, validate required fields, and convert JSON to CSV). This helper should be simple utility code and can be called directly.
+
+
+TASK 2 - GO API (MYSQL)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. create a very basic web app using the go language echo framework
+  2. what would the go.mod file look like for this main.go file
+  3. how do i modify the echo app to bind to any ip address and a specific port when it runs
+  4. add routes for the following:
+      GET /
+      POST /echo
+      POST /log
+      GET /report
+      POST or GET /purge
+  A. return the exact same JSON object that is sent in on the HTTP POST request
+  B. create a constant string for the following JSON structure:
+        { "recorded" : 1768570200, "location" : "den", "sensor" : "bmp280", "measurement" : "temperature", "units" : "C", "value" : 22.3 }
+  C. create a function to convert a json string to a csv string, using the keys as the column names
+  D. can you do this without using the crate csv
+  E. return the csv string as a downloadable file, be sure to modify the headers of the response
+  F. return string message as a JSON object
+  G. use the WGET/CURL test script you created above to generate a postman file for importing the API endpoints
+
+
+TASK 3 - GO ACCESS (MYSQL)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. write a Go interface for sensor data access with three methods: Log, Fetch, and Purge, using JSON strings and type declarations.
+  2. create a struct that implements the sensor data access protocol interface for mysql_data_access.go
+  3. in a main.go file, create an instance of the MysqlDataAccess struct and call the Log, Fetch, and Purge methods
+  4. what would the go.mod file look like for this main.go file
+
+
+TASK 4 - GO LEGOS (MYSQL)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  I. copy the entire api solution from the previous exercise ./go/api/echo-app into ./go/legos
+  II. copy only the mysql_data_access.go, sensor_data_access_protocol.go from the previous exercise ./go/access into ./go/legos
+  III. copy only the sensor_data_helper.go from the previous exercise ./go/data into ./go/legos
+  NOTE: for III above, this code came from "EXTRA PROMPTS TO TRY:" letter "G" in task 1 "DATA"
+
+  1. in each of the three methods of mysql_data_access.go (LogSensorData, FetchSensorData, PurgeSensorData) create a connection to the mysql database, use the same/similar logic for connecting to a mysql database found in the mysql_data.go source file
+  2. in the mysql_data_access.go's LogSensorData, take the "jsonData string" being passed in to the LogSensorData() method to populate the params of the insert, use the same/similar logic for inserting sensor data into a mysql database found in the mysql_data.go source file
+  3. in the mysql_data_access.go's FetchSensorData, create a []string of JSON strings resulting from the select to a mysql table as the return for FetchSensorData(), use the same/similar logic for selecting sensor data from a mysql database found in the mysql_data.go source file
+  4. in the mysql_data_access.go's PurgeSensorData, delete/truncate all data in the sensor data table, use the same/similar logic for deleting/truncating sensor data from a mysql database found in the mysql_data.go source file
+  5. Reuse the OneString helper from earlier tasks for generating, validating, and formatting data. Treat it as a simple utility that can be called directly from the application code.
+
+  A. Using the type interface for SensorDataAccessProtocol, implement a function to instantiate a new sensor data access object based on an environment variable.
+  B. Implement a better logging mechanism for the sensor data access object.
+
+
+===============================================================================
+
+
+TASK 1 - GO DATA (POSTGRES)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. Create a go function to connect to a postgres database
+  2. Create a go function that will store the following string into a postgres database
+  3. Create a go function that will retrieve the following string from a postgres database
+  4. Create a go function that will delete the following string from a postgres database
+  5. Create a main function that will call each of the functions
+  6. Create a go.mod file to include all requirements in this source file
+  7. Modify all five functions into one source file using this string as the string that is being stored:
+
+  A. Create a go function that will update any value in the key value pair of a mutable map
+  B. Create a go function that will generate a random number between 22.4 and 34.1, limited to one decimal place of precision
+  C. Create a go function that will generate the integer value of the current Unix Epoch Timestamp
+  D. Create a go function that will update both the "recorded" value with the current Unix Epoch Timestamp, and the "value" with a random number between 22.4 and 34.1, using the following string as input:
+  E. Modify the original code to pass-in/insert a randomized string into the postgres database each time the code is run
+  F. Create a go function that will remove any key/value pair from a map (like "id" or "_id")
+  G. Combine all of the above to create a small helper file that works with the OneString JSON data (generate sample data, validate required fields, and convert JSON to CSV). This helper should be simple utility code and can be called directly.
+
+
+TASK 2 - GO API (POSTGRES)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. create a very basic web app using the go language echo framework
+  2. what would the go.mod file look like for this main.go file
+  3. how do i modify the echo app to bind to any ip address and a specific port when it runs
+  4. add routes for the following:
+      GET /
+      POST /echo
+      POST /log
+      GET /report
+      POST or GET /purge
+  A. return the exact same JSON object that is sent in on the HTTP POST request
+  B. create a constant string for the following JSON structure:
+        { "recorded" : 1768570200, "location" : "den", "sensor" : "bmp280", "measurement" : "temperature", "units" : "C", "value" : 22.3 }
+  C. create a function to convert a json string to a csv string, using the keys as the column names
+  D. can you do this without using the crate csv
+  E. return the csv string as a downloadable file, be sure to modify the headers of the response
+  F. return string message as a JSON object
+  G. use the WGET/CURL test script you created above to generate a postman file for importing the API endpoints
+
+
+TASK 3 - GO ACCESS (POSTGRES)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. write a Go interface for sensor data access with three methods: Log, Fetch, and Purge, using JSON strings and type declarations.
+  2. create a struct that implements the sensor data access protocol interface for postgres_data_access.go
+  3. in a main.go file, create an instance of the PostgresDataAccess struct and call the Log, Fetch, and Purge methods
+  4. what would the go.mod file look like for this main.go file
+
+
+TASK 4 - GO LEGOS (POSTGRES)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  I. copy the entire api solution from the previous exercise ./go/api/echo-app into ./go/legos
+  II. copy only the postgres_data_access.go, sensor_data_access_protocol.go from the previous exercise ./go/access into ./go/legos
+  III. copy only the sensor_data_helper.go from the previous exercise ./go/data into ./go/legos
+  NOTE: for III above, this code came from "EXTRA PROMPTS TO TRY:" letter "G" in task 1 "DATA"
+
+  1. in each of the three methods of postgres_data_access.go (LogSensorData, FetchSensorData, PurgeSensorData) create a connection to the postgres database, use the same/similar logic for connecting to a postgres database found in the postgres_data.go source file
+  2. in the postgres_data_access.go's LogSensorData, take the "jsonData string" being passed in to the LogSensorData() method to populate the params of the insert, use the same/similar logic for inserting sensor data into a postgres database found in the postgres_data.go source file
+  3. in the postgres_data_access.go's FetchSensorData, create a []string of JSON strings resulting from the select to a postgres table as the return for FetchSensorData(), use the same/similar logic for selecting sensor data from a postgres database found in the postgres_data.go source file
+  4. in the postgres_data_access.go's PurgeSensorData, delete/truncate all data in the sensor data table, use the same/similar logic for deleting/truncating sensor data from a postgres database found in the postgres_data.go source file
+  5. Reuse the OneString helper from earlier tasks for generating, validating, and formatting data. Treat it as a simple utility that can be called directly from the application code.
+
+  A. Using the type interface for SensorDataAccessProtocol, implement a function to instantiate a new sensor data access object based on an environment variable.
+  B. Implement a better logging mechanism for the sensor data access object.
+
+
+===============================================================================
+
+
+TASK 1 - GO DATA (REDIS)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. Create a go function to connect to a redis database
+  2. Create a go function that will store the following string into a redis database
+  3. Create a go function that will retrieve the following string from a redis database
+  4. Create a go function that will delete the following string from a redis database
+  5. Create a main function that will call each of the functions
+  6. Create a go.mod file to include all requirements in this source file
+  7. Modify all five functions into one source file using this string as the string that is being stored:
+
+  A. Create a go function that will update any value in the key value pair of a mutable map
+  B. Create a go function that will generate a random number between 22.4 and 34.1, limited to one decimal place of precision
+  C. Create a go function that will generate the integer value of the current Unix Epoch Timestamp
+  D. Create a go function that will update both the "recorded" value with the current Unix Epoch Timestamp, and the "value" with a random number between 22.4 and 34.1, using the following string as input:
+  E. Modify the original code to pass-in/insert a randomized string into the redis database each time the code is run
+  F. Create a go function that will remove any key/value pair from a map (like "id" or "_id")
+  G. Combine all of the above to create a small helper file that works with the OneString JSON data (generate sample data, validate required fields, and convert JSON to CSV). This helper should be simple utility code and can be called directly.
+
+
+TASK 2 - GO API (REDIS)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. create a very basic web app using the go language echo framework
+  2. what would the go.mod file look like for this main.go file
+  3. how do i modify the echo app to bind to any ip address and a specific port when it runs
+  4. add routes for the following:
+      GET /
+      POST /echo
+      POST /log
+      GET /report
+      POST or GET /purge
+  A. return the exact same JSON object that is sent in on the HTTP POST request
+  B. create a constant string for the following JSON structure:
+        { "recorded" : 1768570200, "location" : "den", "sensor" : "bmp280", "measurement" : "temperature", "units" : "C", "value" : 22.3 }
+  C. create a function to convert a json string to a csv string, using the keys as the column names
+  D. can you do this without using the crate csv
+  E. return the csv string as a downloadable file, be sure to modify the headers of the response
+  F. return string message as a JSON object
+  G. use the WGET/CURL test script you created above to generate a postman file for importing the API endpoints
+
+
+TASK 3 - GO ACCESS (REDIS)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. write a Go interface for sensor data access with three methods: Log, Fetch, and Purge, using JSON strings and type declarations.
+  2. create a struct that implements the sensor data access protocol interface for redis_data_access.go
+  3. in a main.go file, create an instance of the RedisDataAccess struct and call the Log, Fetch, and Purge methods
+  4. what would the go.mod file look like for this main.go file
+
+
+TASK 4 - GO LEGOS (REDIS)
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  I. copy the entire api solution from the previous exercise ./go/api/echo-app into ./go/legos
+  II. copy only the redis_data_access.go, sensor_data_access_protocol.go from the previous exercise ./go/access into ./go/legos
+  III. copy only the sensor_data_helper.go from the previous exercise ./go/data into ./go/legos
+  NOTE: for III above, this code came from "EXTRA PROMPTS TO TRY:" letter "G" in task 1 "DATA"
+
+  1. in each of the three methods of redis_data_access.go (LogSensorData, FetchSensorData, PurgeSensorData) create a connection to the redis database, use the same/similar logic for connecting to a redis database found in the redis_data.go source file
+  2. in the redis_data_access.go's LogSensorData, take the "jsonData string" being passed in to the LogSensorData() method to populate the params of the insert, use the same/similar logic for inserting sensor data into a redis database found in the redis_data.go source file
+  3. in the redis_data_access.go's FetchSensorData, create a []string of JSON strings resulting from the select to a redis list as the return for FetchSensorData(), use the same/similar logic for selecting sensor data from a redis database found in the redis_data.go source file
+  4. in the redis_data_access.go's PurgeSensorData, delete/truncate all data in the sensor data list, use the same/similar logic for deleting/truncating sensor data from a redis database found in the redis_data.go source file
+  5. Reuse the OneString helper from earlier tasks for generating, validating, and formatting data. Treat it as a simple utility that can be called directly from the application code.
+
+  A. Using the type interface for SensorDataAccessProtocol, implement a function to instantiate a new sensor data access object based on an environment variable.
+  B. Implement a better logging mechanism for the sensor data access object.
+
+
+===============================================================================
+GO - SECOND FRAMEWORK (GIN)
+===============================================================================
+
+TASK 2 - GO API (CASSANDRA) - GIN
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. create a very basic web app using the go language gin framework
+  2. what would the go.mod file look like for this main.go file
+  3. how do i modify the gin app to bind to any ip address and a specific port when it runs
+  4. add routes for the following:
+      GET /
+      POST /echo
+      POST /log
+      GET /report
+      POST or GET /purge
+  A. return the exact same JSON object that is sent in on the HTTP POST request
+  B. create a constant string for the following JSON structure:
+        { "recorded" : 1768570200, "location" : "den", "sensor" : "bmp280", "measurement" : "temperature", "units" : "C", "value" : 22.3 }
+  C. create a function to convert a json string to a csv string, using the keys as the column names
+  D. can you do this without using the crate csv
+  E. return the csv string as a downloadable file, be sure to modify the headers of the response
+  F. return string message as a JSON object
+  G. use the WGET/CURL test script you created above to generate a postman file for importing the API endpoints
+
+
+TASK 2 - GO API (MYSQL) - GIN
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. create a very basic web app using the go language gin framework
+  2. what would the go.mod file look like for this main.go file
+  3. how do i modify the gin app to bind to any ip address and a specific port when it runs
+  4. add routes for the following:
+      GET /
+      POST /echo
+      POST /log
+      GET /report
+      POST or GET /purge
+  A. return the exact same JSON object that is sent in on the HTTP POST request
+  B. create a constant string for the following JSON structure:
+        { "recorded" : 1768570200, "location" : "den", "sensor" : "bmp280", "measurement" : "temperature", "units" : "C", "value" : 22.3 }
+  C. create a function to convert a json string to a csv string, using the keys as the column names
+  D. can you do this without using the crate csv
+  E. return the csv string as a downloadable file, be sure to modify the headers of the response
+  F. return string message as a JSON object
+  G. use the WGET/CURL test script you created above to generate a postman file for importing the API endpoints
+
+
+TASK 2 - GO API (POSTGRES) - GIN
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. create a very basic web app using the go language gin framework
+  2. what would the go.mod file look like for this main.go file
+  3. how do i modify the gin app to bind to any ip address and a specific port when it runs
+  4. add routes for the following:
+      GET /
+      POST /echo
+      POST /log
+      GET /report
+      POST or GET /purge
+  A. return the exact same JSON object that is sent in on the HTTP POST request
+  B. create a constant string for the following JSON structure:
+        { "recorded" : 1768570200, "location" : "den", "sensor" : "bmp280", "measurement" : "temperature", "units" : "C", "value" : 22.3 }
+  C. create a function to convert a json string to a csv string, using the keys as the column names
+  D. can you do this without using the crate csv
+  E. return the csv string as a downloadable file, be sure to modify the headers of the response
+  F. return string message as a JSON object
+  G. use the WGET/CURL test script you created above to generate a postman file for importing the API endpoints
+
+
+TASK 2 - GO API (REDIS) - GIN
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  1. create a very basic web app using the go language gin framework
+  2. what would the go.mod file look like for this main.go file
+  3. how do i modify the gin app to bind to any ip address and a specific port when it runs
+  4. add routes for the following:
+      GET /
+      POST /echo
+      POST /log
+      GET /report
+      POST or GET /purge
+  A. return the exact same JSON object that is sent in on the HTTP POST request
+  B. create a constant string for the following JSON structure:
+        { "recorded" : 1768570200, "location" : "den", "sensor" : "bmp280", "measurement" : "temperature", "units" : "C", "value" : 22.3 }
+  C. create a function to convert a json string to a csv string, using the keys as the column names
+  D. can you do this without using the crate csv
+  E. return the csv string as a downloadable file, be sure to modify the headers of the response
+  F. return string message as a JSON object
+  G. use the WGET/CURL test script you created above to generate a postman file for importing the API endpoints
+
+
+TASK 4 - GO LEGOS (CASSANDRA) - GIN
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  This second lego assignment assumes that you have already successfully implemented and tested the Legos assignment for this language once already:
+
+  I. copy the entire api solution from the previous API exercise of the gin framework
+  II. copy all of the data source files you modified in the first implementation of legos using the echo framework
+  III. cut/paste the same dependency injection function from the first implementation of legos using the echo framework
+
+  1. For each of the three functions of the gin framework create a connection to the appropriate type interface for each route (/log, /report, & /purge)
+  2. Reuse the OneString helper from earlier tasks for generating, validating, and formatting data. Treat it as a simple utility that can be called directly from the application code.
+
+  NOTE: this time the type interface function for each of the databases should already be implemented
+
+
+TASK 4 - GO LEGOS (MYSQL) - GIN
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  This second lego assignment assumes that you have already successfully implemented and tested the Legos assignment for this language once already:
+
+  I. copy the entire api solution from the previous API exercise of the gin framework
+  II. copy all of the data source files you modified in the first implementation of legos using the echo framework
+  III. cut/paste the same dependency injection function from the first implementation of legos using the echo framework
+
+  1. For each of the three functions of the gin framework create a connection to the appropriate type interface for each route (/log, /report, & /purge)
+  2. Reuse the OneString helper from earlier tasks for generating, validating, and formatting data. Treat it as a simple utility that can be called directly from the application code.
+
+  NOTE: this time the type interface function for each of the databases should already be implemented
+
+
+TASK 4 - GO LEGOS (POSTGRES) - GIN
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  This second lego assignment assumes that you have already successfully implemented and tested the Legos assignment for this language once already:
+
+  I. copy the entire api solution from the previous API exercise of the gin framework
+  II. copy all of the data source files you modified in the first implementation of legos using the echo framework
+  III. cut/paste the same dependency injection function from the first implementation of legos using the echo framework
+
+  1. For each of the three functions of the gin framework create a connection to the appropriate type interface for each route (/log, /report, & /purge)
+  2. Reuse the OneString helper from earlier tasks for generating, validating, and formatting data. Treat it as a simple utility that can be called directly from the application code.
+
+  NOTE: this time the type interface function for each of the databases should already be implemented
+
+
+TASK 4 - GO LEGOS (REDIS) - GIN
++++
+
+  The String: {"recorded": 1768570200,"location": "den","sensor": "bmp280","measurement": "temperature","units": "C","value": 22.3}
+
+  This second lego assignment assumes that you have already successfully implemented and tested the Legos assignment for this language once already:
+
+  I. copy the entire api solution from the previous API exercise of the gin framework
+  II. copy all of the data source files you modified in the first implementation of legos using the echo framework
+  III. cut/paste the same dependency injection function from the first implementation of legos using the echo framework
+
+  1. For each of the three functions of the gin framework create a connection to the appropriate type interface for each route (/log, /report, & /purge)
+  2. Reuse the OneString helper from earlier tasks for generating, validating, and formatting data. Treat it as a simple utility that can be called directly from the application code.
+
+  NOTE: this time the type interface function for each of the databases should already be implemented
+
+
+===============================================================================
+
+
+NOTES FOR ALL TASKS & DATABASES
++++
+
+For each task, generate the appropriate go.mod file for Go.
+
+For each task, be sure to follow the Go naming conventions:
+ Files - snake_case or simply lowercasewords
+ Structs, Functions, Methods, Variables and Constants:
+   UpperCamelCase if exported (public).
+   lowerCamelCase if unexported (private).
+
+For the Cassandra database, use the following schema for a table named "sensor_data" in a keyspace named "sensor_data_db":
+  CREATE TABLE IF NOT EXISTS sensor_data (
+   recorded bigint,
+   location text,
+   sensor text,
+   measurement text,
+   units text,
+   value double,
+   PRIMARY KEY (recorded, location, sensor)
+  );
+
+For the MySQL database, use the following schema for a table named "sensor_data" in a database named "sensor_data_db":
+  CREATE TABLE IF NOT EXISTS sensor_data (
+   recorded BIGINT NOT NULL,
+   location VARCHAR(255) NOT NULL,
+   sensor VARCHAR(255) NOT NULL,
+   measurement VARCHAR(255) NOT NULL,
+   units VARCHAR(10) NOT NULL,
+   value DECIMAL(5,2) NOT NULL
+  );
+
+For the Postgres database, use the following schema for a table named "sensor_data" in a database named "sensor_data_db":
+  CREATE TABLE IF NOT EXISTS sensor_data (
+   recorded BIGINT NOT NULL,
+   location VARCHAR(255) NOT NULL,
+   sensor VARCHAR(255) NOT NULL,
+   measurement VARCHAR(255) NOT NULL,
+   units VARCHAR(255) NOT NULL,
+   value NUMERIC(10, 2) NOT NULL
+  );
+
+For the Redis database, use the List data type by using rpush and lrange to store and retrieve for the key "sensor_data_db:sensor_data"
+
+For Go's implementation of Dependency Injection to achieve Inversion of Control, use a type interface

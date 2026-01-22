@@ -1,0 +1,3198 @@
+========================================
+PROJECT: quarkus-app
+PATH: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/legos/quarkus-app
+========================================
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/legos/quarkus-app/src/main/java/com/ggeoffre/RootResource.java
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package com.ggeoffre;
+
+import com.ggeoffre.data.*;
+import jakarta.ws.rs.*;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+import java.util.*;
+import org.json.*;
+
+@Path("/")
+public class RootResource {
+
+    public static SensorDataAccess getSensorDataAccess() {
+        String dataAccessType = System.getenv("DATA_ACCESS");
+        if (dataAccessType == null || dataAccessType.isEmpty()) {
+            dataAccessType = "redis";
+        }
+        switch (dataAccessType.toLowerCase()) {
+            case "redis":
+                return new RedisData();
+            case "mongo":
+                return new MongoData();
+            case "cassandra":
+                return new CassandraData();
+            case "mysql":
+                return new MySQLData();
+            case "postgres":
+                return new PostgresData();
+            default:
+                throw new IllegalArgumentException(
+                    "Unsupported DATA_ACCESS type: " + dataAccessType
+                );
+        }
+    }
+
+    @GET
+    @Produces(MediaType.APPLICATION_JSON)
+    public String root() {
+        return "{\"message\": \"Quarkus API Server is running!\"}";
+    }
+
+    @POST
+    @Path("/echo")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public String echo(String json) {
+        return json;
+    }
+
+    @POST
+    @Path("/log")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public String log(String data) {
+        SensorDataAccess sensorData = RootResource.getSensorDataAccess();
+        sensorData.logSensorData(new JSONObject(data).toString());
+        return data;
+    }
+
+    @GET
+    @Path("/report")
+    @Produces({ MediaType.TEXT_PLAIN, MediaType.APPLICATION_JSON })
+    public jakarta.ws.rs.core.Response report() {
+        try {
+            SensorDataAccess sensorData = RootResource.getSensorDataAccess();
+            List<String> sensorDataList = sensorData.fetchSensorData();
+            if (sensorDataList.isEmpty()) {
+                return jakarta.ws.rs.core.Response.status(
+                    Response.Status.NOT_FOUND
+                )
+                    .entity("{\"message\": \"No sensor data stored\"}")
+                    .build();
+            }
+            String csvData = SensorDataJsonHelper.jsonArrayToCsv(
+                sensorDataList.toArray(new String[0])
+            );
+            return jakarta.ws.rs.core.Response.ok(csvData)
+                .header(
+                    "Content-Disposition",
+                    "attachment; filename=\"report.csv\""
+                )
+                .header("Content-Type", "text/csv")
+                .build();
+        } catch (Exception e) {
+            return jakarta.ws.rs.core.Response.status(
+                Response.Status.INTERNAL_SERVER_ERROR
+            )
+                .entity(
+                    "{\"message\": \"An error occurred while generating the report\"}"
+                )
+                .build();
+        }
+    }
+
+    @GET
+    @POST
+    @Path("/purge")
+    @Produces({ MediaType.APPLICATION_JSON, MediaType.TEXT_PLAIN })
+    @Consumes(
+        { MediaType.TEXT_PLAIN, MediaType.APPLICATION_JSON, MediaType.WILDCARD }
+    )
+    public String purge() {
+        SensorDataAccess sensorData = RootResource.getSensorDataAccess();
+        sensorData.purgeSensorData();
+        return "{\"message\": \"Purge operation executed\"}";
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/legos/quarkus-app/src/main/java/com/ggeoffre/data/CassandraData.java
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package com.ggeoffre.data;
+
+import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.cql.*;
+import java.net.InetSocketAddress;
+import java.util.*;
+import org.json.*;
+
+public class CassandraData implements SensorDataAccess {
+
+    // Configuration constants
+    private static final String CONTACT_POINT = "localhost";
+    private static final int PORT = 9042;
+    private static final String LOCAL_DATACENTER = "datacenter1";
+    private static final String KEYSPACE = "sensor_data_db";
+    private static final String TABLE = "sensor_data";
+
+    private static CqlSession session; // Singleton session
+
+    // Initialize the session once
+    public void init() {
+        try {
+            session = CqlSession.builder()
+                .addContactPoint(new InetSocketAddress(CONTACT_POINT, PORT))
+                .withLocalDatacenter(LOCAL_DATACENTER)
+                .withKeyspace(KEYSPACE)
+                .build();
+
+            System.out.println(
+                "Connected to Cassandra (keyspace: " + KEYSPACE + ")"
+            );
+
+            // Create keyspace and table if not exists
+            String createKeyspace = String.format(
+                "CREATE KEYSPACE IF NOT EXISTS %s WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 };",
+                KEYSPACE
+            );
+            session.execute(createKeyspace);
+
+            String createTable = String.format(
+                "CREATE TABLE IF NOT EXISTS %s (" +
+                    "recorded bigint, " +
+                    "location text, " +
+                    "sensor text, " +
+                    "measurement text, " +
+                    "units text, " +
+                    "value double, " +
+                    "PRIMARY KEY (recorded, location, sensor)" +
+                    ");",
+                TABLE
+            );
+            session.execute(createTable);
+
+            System.out.println("Keyspace and table ensured.");
+        } catch (Exception e) {
+            System.err.println("Failed to initialize Cassandra session.");
+            e.printStackTrace();
+        }
+    }
+
+    // Reuse the singleton session
+    public CqlSession getSession() {
+        if (session == null || session.isClosed()) {
+            session = CqlSession.builder()
+                .addContactPoint(new InetSocketAddress(CONTACT_POINT, PORT))
+                .withLocalDatacenter(LOCAL_DATACENTER)
+                .withKeyspace(KEYSPACE)
+                .build();
+        }
+        return session;
+    }
+
+    @Override
+    public void logSensorData(String jsonData) {
+        System.out.println("Logging sensor data to Cassandra: " + jsonData);
+        try {
+            JSONObject jsonObject =
+                SensorDataJsonHelper.getSensorDataJSONObject(jsonData);
+            PreparedStatement insertStatement = getSession().prepare(
+                "INSERT INTO sensor_data (recorded, location, sensor, measurement, units, value) VALUES (?, ?, ?, ?, ?, ?)"
+            );
+            BoundStatement boundStatement = insertStatement.bind(
+                (System.currentTimeMillis() / 1000),
+                jsonObject.getString("location"),
+                jsonObject.getString("sensor"),
+                jsonObject.getString("measurement"),
+                jsonObject.getString("units"),
+                jsonObject.getDouble("value")
+            );
+            getSession().execute(boundStatement);
+            System.out.println("SensorData stored");
+        } catch (Exception e) {
+            System.err.println("Failed to save sensor data from JSON");
+            e.printStackTrace();
+        }
+    }
+
+    @Override
+    public List<String> fetchSensorData() {
+        System.out.println("Fetching sensor data from Cassandra");
+        List<String> jsonStrings = new ArrayList<>();
+        try {
+            ResultSet resultSet = getSession().execute(
+                "SELECT JSON * FROM sensor_data"
+            );
+            for (Row row : resultSet) {
+                jsonStrings.add(row.getString("[json]"));
+            }
+            System.out.println("SensorData retrieved");
+        } catch (Exception e) {
+            System.err.println("Failed to retrieve sensor data");
+            e.printStackTrace();
+        }
+        return jsonStrings;
+    }
+
+    @Override
+    public void purgeSensorData() {
+        System.out.println("Purging sensor data from Cassandra");
+        try {
+            getSession().execute("TRUNCATE sensor_data");
+            System.out.println("Sensor Data purged\n");
+        } catch (Exception e) {
+            System.err.println("Failed to purge sensor data");
+            e.printStackTrace();
+        }
+    }
+
+    // Close the session when the application shuts down
+    public void close() {
+        if (session != null && !session.isClosed()) {
+            session.close();
+            System.out.println("Cassandra session closed.");
+        }
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/legos/quarkus-app/src/main/java/com/ggeoffre/data/MongoData.java
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package com.ggeoffre.data;
+
+import com.mongodb.client.*;
+import com.mongodb.client.model.Projections;
+import java.util.*;
+import org.bson.Document;
+
+public class MongoData implements SensorDataAccess {
+
+    private static final String MONGO_URI = "mongodb://localhost:27017";
+    private static final String DATABASE_NAME = "sensor_data_db";
+    private static final String COLLECTION_NAME = "sensor_data";
+
+    private final MongoClient mongoClient;
+    private final MongoCollection<Document> collection;
+
+    public MongoData() {
+        this.mongoClient = MongoClients.create(MONGO_URI);
+        MongoDatabase db = mongoClient.getDatabase(DATABASE_NAME);
+        this.collection = db.getCollection(COLLECTION_NAME);
+        System.out.println("MongoClient initialized and connected to MongoDB");
+    }
+
+    public MongoCollection<Document> getCollection() {
+        return collection;
+    }
+
+    @Override
+    public void logSensorData(String jsonData) {
+        System.out.println("Logging sensor data to MongoDB: " + jsonData);
+
+        Document sensorDoc = SensorDataJsonHelper.getSendorDataDocument(
+            jsonData
+        );
+        System.out.println("SensorData Document created from JSON");
+
+        try {
+            collection.insertOne(sensorDoc);
+            System.out.println("SensorData stored");
+        } catch (Exception e) {
+            System.err.println("Failed to insert sensor data");
+            e.printStackTrace();
+        }
+    }
+
+    @Override
+    public List<String> fetchSensorData() {
+        System.out.println("Fetching sensor data from MongoDB");
+
+        List<String> jsonStrings = new ArrayList<>();
+        try (
+            MongoCursor<Document> cursor = collection
+                .find()
+                .projection(Projections.excludeId())
+                .iterator()
+        ) {
+            while (cursor.hasNext()) {
+                jsonStrings.add(cursor.next().toJson());
+            }
+            System.out.println("SensorData retrieved");
+        } catch (Exception e) {
+            System.err.println("Failed to retrieve sensor data");
+            e.printStackTrace();
+        }
+        return jsonStrings;
+    }
+
+    @Override
+    public void purgeSensorData() {
+        System.out.println("Purging sensor data from MongoDB");
+
+        try {
+            collection.deleteMany(new Document());
+            System.out.println("SensorData purged");
+        } catch (Exception e) {
+            System.err.println("Failed to purge sensor data");
+            e.printStackTrace();
+        }
+    }
+
+    public void close() {
+        mongoClient.close();
+        System.out.println("MongoClient closed");
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/legos/quarkus-app/src/main/java/com/ggeoffre/data/MySQLData.java
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package com.ggeoffre.data;
+
+import java.sql.*;
+import java.util.*;
+import org.json.*;
+
+public class MySQLData implements SensorDataAccess {
+
+    // Configuration constants
+    private static final String HOST = "localhost";
+    private static final int PORT = 3306;
+    private static final String USER = "root";
+    private static final String PASSWORD = "";
+    private static final String DATABASE = "sensor_data_db";
+    private static final String TABLE = "sensor_data";
+
+    private Connection createConnection() throws SQLException {
+        String url = String.format(
+            "jdbc:mysql://%s:%d/%s",
+            HOST,
+            PORT,
+            DATABASE
+        );
+        return DriverManager.getConnection(url, USER, PASSWORD);
+    }
+
+    private Connection createSystemDbConnection() throws SQLException {
+        String url = String.format("jdbc:mysql://%s:%d/mysql", HOST, PORT);
+        return DriverManager.getConnection(url, USER, PASSWORD);
+    }
+
+    // Initialize the MySQL connection
+    private void init() throws SQLException {
+        // Connect to the system database
+        try (Connection connection = createSystemDbConnection()) {
+            System.out.println("Connected to MySQL (mysql database)");
+
+            // Create database if not exists
+            try (Statement stmt = connection.createStatement()) {
+                String createDbSql = String.format(
+                    "CREATE DATABASE IF NOT EXISTS %s;",
+                    DATABASE
+                );
+                stmt.executeUpdate(createDbSql);
+                System.out.println("Database ensured: " + DATABASE);
+            } catch (SQLException e) {
+                System.err.println(
+                    "Error creating database: " + e.getMessage()
+                );
+                e.printStackTrace();
+                return;
+            }
+        } catch (SQLException e) {
+            System.err.println(
+                "Failed to connect to the MySQL server (mysql database)."
+            );
+            e.printStackTrace();
+            return;
+        }
+
+        //connect to target database
+        try (
+            Connection connection = createConnection();
+            Statement stmt = connection.createStatement()
+        ) {
+            System.out.println("Connected to MySQL (" + DATABASE + ")");
+
+            // Create table if not exists
+            String createTableSql = String.format(
+                "CREATE TABLE IF NOT EXISTS %s (" +
+                    "recorded BIGINT NOT NULL, " +
+                    "location VARCHAR(255) NOT NULL, " +
+                    "sensor VARCHAR(255) NOT NULL, " +
+                    "measurement VARCHAR(255) NOT NULL, " +
+                    "units VARCHAR(10) NOT NULL, " +
+                    "value DECIMAL(5,2) NOT NULL" +
+                    ");",
+                TABLE
+            );
+            stmt.executeUpdate(createTableSql);
+            System.out.println("Table ensured: " + TABLE);
+        } catch (SQLException e) {
+            System.err.println("Error creating table: " + e.getMessage());
+            e.printStackTrace();
+            return;
+        }
+    }
+
+    @Override
+    public void logSensorData(String jsonData) {
+        System.out.println("Logging sensor data to MySQL: " + jsonData);
+
+        String insertSql =
+            "INSERT INTO sensor_data (recorded, location, sensor, measurement, units, value) VALUES (?, ?, ?, ?, ?, ?)";
+        try (Connection connection = createConnection()) {
+            JSONObject jsonObj = new JSONObject(jsonData);
+            System.out.println("SensorData marshalled to JSON");
+
+            // Validate or generate 'recorded' field
+            long recorded = jsonObj.has("recorded")
+                ? jsonObj.getLong("recorded")
+                : System.currentTimeMillis() / 1000;
+
+            try (
+                PreparedStatement pstmt = connection.prepareStatement(insertSql)
+            ) {
+                pstmt.setLong(1, recorded);
+                pstmt.setString(2, jsonObj.getString("location"));
+                pstmt.setString(3, jsonObj.getString("sensor"));
+                pstmt.setString(4, jsonObj.getString("measurement"));
+                pstmt.setString(5, jsonObj.getString("units"));
+                pstmt.setBigDecimal(6, jsonObj.getBigDecimal("value"));
+                pstmt.executeUpdate();
+            }
+            System.out.println("SensorData stored");
+        } catch (SQLException | JSONException e) {
+            System.err.println("Failed to store sensor data.");
+            e.printStackTrace();
+        }
+    }
+
+    @Override
+    public List<String> fetchSensorData() {
+        System.out.println("Fetching sensor data from MySQL");
+        String selectSql =
+            "SELECT recorded, location, sensor, measurement, units, value FROM sensor_data";
+        List<String> jsonStrings = new ArrayList<>();
+        try (
+            Connection connection = createConnection();
+            Statement stmt = connection.createStatement();
+            ResultSet rs = stmt.executeQuery(selectSql)
+        ) {
+            while (rs.next()) {
+                JSONObject jsonObj = new JSONObject();
+                jsonObj.put("recorded", rs.getLong("recorded"));
+                jsonObj.put("location", rs.getString("location"));
+                jsonObj.put("sensor", rs.getString("sensor"));
+                jsonObj.put("measurement", rs.getString("measurement"));
+                jsonObj.put("units", rs.getString("units"));
+                jsonObj.put("value", rs.getBigDecimal("value"));
+                jsonStrings.add(jsonObj.toString());
+            }
+            System.out.println("SensorData retrieved");
+        } catch (SQLException | JSONException e) {
+            System.err.println("Failed to retrieve sensor data.");
+            e.printStackTrace();
+        }
+        return jsonStrings;
+    }
+
+    @Override
+    public void purgeSensorData() {
+        System.out.println("Purging sensor data from MySQL");
+        String deleteSql = "DELETE FROM sensor_data";
+        try (
+            Connection connection = createConnection();
+            Statement stmt = connection.createStatement()
+        ) {
+            stmt.executeUpdate(deleteSql);
+            System.out.println("Sensor Data purged\n");
+        } catch (SQLException e) {
+            System.err.println("Failed to purge sensor data.");
+            e.printStackTrace();
+        }
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/legos/quarkus-app/src/main/java/com/ggeoffre/data/PostgresData.java
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package com.ggeoffre.data;
+
+import java.sql.*;
+import java.util.*;
+import org.json.*;
+
+public class PostgresData implements SensorDataAccess {
+
+    // Configuration constants
+    private static final String HOST = "localhost";
+    private static final int PORT = 5432;
+    private static final String USER = "postgres";
+    private static final String PASSWORD = "";
+    private static final String DATABASE = "sensor_data_db";
+    private static final String TABLE = "sensor_data";
+
+    private Connection createConnection() throws SQLException {
+        String url = String.format(
+            "jdbc:postgresql://%s:%d/%s",
+            HOST,
+            PORT,
+            DATABASE
+        );
+        return DriverManager.getConnection(url, USER, PASSWORD);
+    }
+
+    private Connection createSystemDatabaseConnection() throws SQLException {
+        String url = String.format(
+            "jdbc:postgresql://%s:%d/postgres",
+            HOST,
+            PORT
+        );
+        return DriverManager.getConnection(url, USER, PASSWORD);
+    }
+
+    public void init() {
+        System.out.println("Initializing PostgreSQL connection");
+        try (Connection connection = createSystemDatabaseConnection()) {
+            System.out.println("Connected to Postgres (postgres database)");
+
+            // Check if database exists, create if not
+            try (Statement stmt = connection.createStatement()) {
+                String checkDbSql = String.format(
+                    "SELECT 1 FROM pg_database WHERE datname = '%s'",
+                    DATABASE
+                );
+                ResultSet rs = stmt.executeQuery(checkDbSql);
+                boolean dbExists = rs.next();
+                rs.close();
+
+                if (!dbExists) {
+                    String createDbSql = String.format(
+                        "CREATE DATABASE %s;",
+                        DATABASE
+                    );
+                    stmt.executeUpdate(createDbSql);
+                    System.out.println("Database created: " + DATABASE);
+                } else {
+                    System.out.println("Database already exists: " + DATABASE);
+                }
+            } catch (SQLException e) {
+                System.err.println(
+                    "Error creating database: " + e.getMessage()
+                );
+                e.printStackTrace();
+                return;
+            }
+        } catch (SQLException e) {
+            System.err.println(
+                "Failed to connect to the Postgres server (postgres database)."
+            );
+            e.printStackTrace();
+            return;
+        }
+        try (Connection connection = createConnection()) {
+            System.out.println("Connected to Postgres (" + DATABASE + ")");
+
+            // Create table if not exists
+            try (Statement stmt = connection.createStatement()) {
+                String createTableSql = String.format(
+                    "CREATE TABLE IF NOT EXISTS %s (" +
+                        "recorded BIGINT NOT NULL, " +
+                        "location VARCHAR(255) NOT NULL, " +
+                        "sensor VARCHAR(255) NOT NULL, " +
+                        "measurement VARCHAR(255) NOT NULL, " +
+                        "units VARCHAR(255) NOT NULL, " +
+                        "value NUMERIC(10, 2) NOT NULL" +
+                        ");",
+                    TABLE
+                );
+                stmt.executeUpdate(createTableSql);
+                System.out.println("Table ensured: " + TABLE);
+            } catch (SQLException e) {
+                System.err.println("Error creating table: " + e.getMessage());
+                e.printStackTrace();
+                return;
+            }
+        } catch (SQLException e) {
+            System.err.println("Error initializing: " + e.getMessage());
+            e.printStackTrace();
+            return;
+        }
+    }
+
+    @Override
+    public void logSensorData(String jsonData) {
+        System.out.println("Logging sensor data to PostgreSQL: " + jsonData);
+        String insertSql =
+            "INSERT INTO sensor_data (recorded, location, sensor, measurement, units, value) VALUES (?, ?, ?, ?, ?, ?)";
+
+        try (Connection connection = createConnection()) {
+            JSONObject jsonObj = new JSONObject(jsonData);
+            System.out.println("SensorData marshalled to JSON");
+            long recorded = jsonObj.has("recorded")
+                ? jsonObj.getLong("recorded")
+                : System.currentTimeMillis() / 1000;
+
+            try (
+                PreparedStatement pstmt = connection.prepareStatement(insertSql)
+            ) {
+                pstmt.setLong(1, recorded);
+                pstmt.setString(2, jsonObj.getString("location"));
+                pstmt.setString(3, jsonObj.getString("sensor"));
+                pstmt.setString(4, jsonObj.getString("measurement"));
+                pstmt.setString(5, jsonObj.getString("units"));
+                pstmt.setBigDecimal(6, jsonObj.getBigDecimal("value"));
+                pstmt.executeUpdate();
+            }
+            System.out.println("SensorData stored");
+        } catch (SQLException | JSONException e) {
+            System.err.println("Failed to store sensor data.");
+            e.printStackTrace();
+        }
+    }
+
+    @Override
+    public List<String> fetchSensorData() {
+        System.out.println("Fetching sensor data from PostgreSQL");
+        String selectSql =
+            "SELECT recorded, location, sensor, measurement, units, value FROM sensor_data";
+        List<String> jsonList = new ArrayList<>();
+        try (
+            Connection connection = createConnection();
+            Statement stmt = connection.createStatement();
+            ResultSet rs = stmt.executeQuery(selectSql)
+        ) {
+            while (rs.next()) {
+                JSONObject jsonObj = new JSONObject();
+                jsonObj.put("recorded", rs.getLong("recorded"));
+                jsonObj.put("location", rs.getString("location"));
+                jsonObj.put("sensor", rs.getString("sensor"));
+                jsonObj.put("measurement", rs.getString("measurement"));
+                jsonObj.put("units", rs.getString("units"));
+                jsonObj.put("value", rs.getBigDecimal("value"));
+                jsonList.add(jsonObj.toString());
+            }
+            System.out.println("SensorData retrieved");
+        } catch (SQLException | JSONException e) {
+            System.err.println("Failed to retrieve sensor data.");
+            e.printStackTrace();
+        }
+        return Collections.unmodifiableList(jsonList);
+    }
+
+    @Override
+    public void purgeSensorData() {
+        System.out.println("Purging sensor data from PostgreSQL");
+        String deleteSql = "DELETE FROM sensor_data";
+        try (
+            Connection connection = createConnection();
+            Statement stmt = connection.createStatement()
+        ) {
+            stmt.executeUpdate(deleteSql);
+            System.out.println("Sensor Data purged\n");
+        } catch (SQLException e) {
+            System.err.println("Failed to purge sensor data.");
+            e.printStackTrace();
+        }
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/legos/quarkus-app/src/main/java/com/ggeoffre/data/RedisData.java
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package com.ggeoffre.data;
+
+import java.util.*;
+import redis.clients.jedis.Jedis;
+
+public class RedisData implements SensorDataAccess {
+
+    // Configuration constants (consider externalizing for production)
+    private static final String REDIS_HOST = "localhost";
+    private static final int REDIS_PORT = 6379;
+    private static final String SENSOR_DATA_KEY = "sensor_data_db:sensor_data";
+
+    /**
+     * Processes sensor data: inserts, retrieves, prints as CSV, and purges the list.
+     */
+    public Jedis getJedisClient() {
+        try {
+            Jedis jedisClient = new Jedis(REDIS_HOST, REDIS_PORT);
+            System.out.println("Connected to Redis database.");
+            return jedisClient;
+        } catch (Exception e) {
+            System.err.println("Failed to connect to Redis database.");
+            e.printStackTrace();
+            throw e;
+        }
+    }
+
+    // Store sensor data
+    @Override
+    public void logSensorData(String jsonData) {
+        System.out.println("Logging sensor data to Redis: " + jsonData);
+        try {
+            Jedis jedisClient = getJedisClient();
+            jedisClient.rpush(SENSOR_DATA_KEY, jsonData);
+            System.out.println("SensorData stored");
+        } catch (Exception e) {
+            System.err.println("Failed to store sensor data in Redis.");
+            e.printStackTrace();
+        }
+    }
+
+    // Retrieve sensor data
+    @Override
+    public List<String> fetchSensorData() {
+        System.out.println("Fetching sensor data from Redis");
+        List<String> jsonStrs = null;
+        try {
+            Jedis jedisClient = getJedisClient();
+            jsonStrs = jedisClient.lrange(SENSOR_DATA_KEY, 0, -1);
+        } catch (Exception e) {
+            System.err.println("Failed to retrieve sensor data from Redis.");
+            e.printStackTrace();
+        }
+        return jsonStrs != null ? jsonStrs : Collections.emptyList();
+    }
+
+    // Purge sensor data (use with caution in production!)
+    @Override
+    public void purgeSensorData() {
+        System.out.println("Purging sensor data from Redis");
+        try {
+            Jedis jedisClient = getJedisClient();
+            jedisClient.del(SENSOR_DATA_KEY);
+            System.out.println("Sensor Data purged\n");
+        } catch (Exception e) {
+            System.err.println("Failed to purge sensor data in Redis.");
+            e.printStackTrace();
+        }
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/legos/quarkus-app/src/main/java/com/ggeoffre/data/SensorDataAccess.java
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package com.ggeoffre.data;
+
+import java.util.List;
+
+public interface SensorDataAccess {
+    void logSensorData(String jsonData);
+    List<String> fetchSensorData();
+    void purgeSensorData();
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/legos/quarkus-app/src/main/java/com/ggeoffre/data/SensorDataJsonHelper.java
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package com.ggeoffre.data;
+
+import java.util.*;
+import org.bson.Document;
+import org.json.*;
+
+public class SensorDataJsonHelper {
+
+    public static final String SENSOR_DATA_JSON_STRING =
+        "{\"recorded\": 1768237200, \"location\": \"den\", \"sensor\": \"bmp280\", \"measurement\": \"temperature\", \"units\": \"C\", \"value\": 22.3}";
+
+    public static Document getSendorDataDocument(String sensorJsonString) {
+        return Document.parse(sensorJsonString);
+    }
+
+    public static JSONObject getSensorDataJSONObject(String sensorJsonString) {
+        return new JSONObject(sensorJsonString);
+    }
+
+    public static String getSensorDataJSONString(Document sensorDocument) {
+        return sensorDocument.toJson();
+    }
+
+    // Custom exception for JSON utility operations
+    public static class JsonUtilityException extends RuntimeException {
+
+        public JsonUtilityException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
+    // Converts an array of JSON strings to a CSV format.
+    public static String jsonArrayToCsv(String[] jsonStrings) {
+        if (jsonStrings == null || jsonStrings.length == 0) {
+            return "";
+        }
+
+        try {
+            List<String> headers = new ArrayList<>();
+            List<List<String>> rows = new ArrayList<>();
+
+            for (String jsonString : jsonStrings) {
+                if (jsonString == null || jsonString.isEmpty()) {
+                    continue;
+                }
+                JSONObject jsonObject = new JSONObject(jsonString);
+                List<String> row = new ArrayList<>();
+
+                for (String key : jsonObject.keySet()) {
+                    if (!headers.contains(key)) {
+                        headers.add(key);
+                    }
+                    row.add(jsonObject.optString(key, ""));
+                }
+                rows.add(row);
+            }
+
+            StringBuilder csvBuilder = new StringBuilder();
+            csvBuilder.append(String.join(",", headers)).append("\n");
+
+            for (List<String> row : rows) {
+                List<String> orderedRow = new ArrayList<>();
+                for (String header : headers) {
+                    int index = headers.indexOf(header);
+                    orderedRow.add(index < row.size() ? row.get(index) : "");
+                }
+                csvBuilder.append(String.join(",", orderedRow)).append("\n");
+            }
+
+            return csvBuilder.toString();
+        } catch (Exception e) {
+            throw new JsonUtilityException(
+                "Error converting JSON array to CSV",
+                e
+            );
+        }
+    }
+}
+
+
+
+========================================
+PROJECT: spring-app
+PATH: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/legos/spring-app
+========================================
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/legos/spring-app/src/main/java/com/ggeoffre/SensorApplication.java
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package com.ggeoffre;
+
+import com.ggeoffre.data.*;
+import java.util.*;
+import org.json.*;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RestController;
+
+@SpringBootApplication
+public class SensorApplication {
+
+    public static SensorDataAccess getSensorDataAccess() {
+        String dataAccessType = System.getenv("DATA_ACCESS");
+        if (dataAccessType == null || dataAccessType.isEmpty()) {
+            dataAccessType = "redis";
+        }
+        switch (dataAccessType.toLowerCase()) {
+            case "redis":
+                return new RedisData();
+            case "mongo":
+                return new MongoData();
+            case "cassandra":
+                return new CassandraData();
+            case "mysql":
+                return new MySQLData();
+            case "postgres":
+                return new PostgresData();
+            default:
+                throw new IllegalArgumentException(
+                    "Unsupported DATA_ACCESS type: " + dataAccessType
+                );
+        }
+    }
+
+    public static void main(String[] args) {
+        SpringApplication.run(SensorApplication.class, args);
+    }
+}
+
+@RestController
+@RequestMapping("/")
+class SensorDataApiController {
+
+    @GetMapping
+    public Map<String, String> sayHello() {
+        return Map.of("message", "Spring API Server is running!");
+    }
+
+    @PostMapping("/echo")
+    public Map<String, Object> echo(@RequestBody Map<String, Object> data) {
+        return data;
+    }
+
+    @PostMapping("/log")
+    public Map<String, Object> log(@RequestBody Map<String, Object> data) {
+        SensorDataAccess sensorData = SensorApplication.getSensorDataAccess();
+        sensorData.logSensorData(new JSONObject(data).toString());
+        return data;
+    }
+
+    @GetMapping("/report")
+    public ResponseEntity<?> getReport() throws Exception {
+        SensorDataAccess sensorData = SensorApplication.getSensorDataAccess();
+        List<String> sensorDataList = sensorData.fetchSensorData();
+
+        if (sensorDataList.isEmpty()) {
+            return ResponseEntity.ok(
+                Map.of("message", "No sensor data stored")
+            );
+        }
+
+        String csvData = SensorDataJsonHelper.jsonArrayToCsv(
+            sensorDataList.toArray(new String[0])
+        );
+        ByteArrayResource resource = new ByteArrayResource(csvData.getBytes());
+        HttpHeaders headers = new HttpHeaders();
+        headers.add(
+            HttpHeaders.CONTENT_DISPOSITION,
+            "attachment; filename=report.csv"
+        );
+        headers.add(HttpHeaders.CONTENT_TYPE, "text/csv");
+        return ResponseEntity.ok()
+            .headers(headers)
+            .contentLength(csvData.length())
+            .body(resource);
+    }
+
+    @RequestMapping(
+        value = "/purge",
+        method = { RequestMethod.GET, RequestMethod.POST }
+    )
+    public Map<String, String> purge() {
+        SensorDataAccess sensorData = SensorApplication.getSensorDataAccess();
+        sensorData.purgeSensorData();
+        return Map.of("message", "Purge operation completed");
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/legos/spring-app/src/main/java/com/ggeoffre/data/CassandraData.java
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package com.ggeoffre.data;
+
+import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.cql.*;
+import java.net.InetSocketAddress;
+import java.util.*;
+import org.json.*;
+
+public class CassandraData implements SensorDataAccess {
+
+    // Configuration constants
+    private static final String CONTACT_POINT = "localhost";
+    private static final int PORT = 9042;
+    private static final String LOCAL_DATACENTER = "datacenter1";
+    private static final String KEYSPACE = "sensor_data_db";
+    private static final String TABLE = "sensor_data";
+
+    private static CqlSession session; // Singleton session
+
+    // Initialize the session once
+    public void init() {
+        try {
+            session = CqlSession.builder()
+                .addContactPoint(new InetSocketAddress(CONTACT_POINT, PORT))
+                .withLocalDatacenter(LOCAL_DATACENTER)
+                .withKeyspace(KEYSPACE)
+                .build();
+
+            System.out.println(
+                "Connected to Cassandra (keyspace: " + KEYSPACE + ")"
+            );
+
+            // Create keyspace and table if not exists
+            String createKeyspace = String.format(
+                "CREATE KEYSPACE IF NOT EXISTS %s WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 };",
+                KEYSPACE
+            );
+            session.execute(createKeyspace);
+
+            String createTable = String.format(
+                "CREATE TABLE IF NOT EXISTS %s (" +
+                    "recorded bigint, " +
+                    "location text, " +
+                    "sensor text, " +
+                    "measurement text, " +
+                    "units text, " +
+                    "value double, " +
+                    "PRIMARY KEY (recorded, location, sensor)" +
+                    ");",
+                TABLE
+            );
+            session.execute(createTable);
+
+            System.out.println("Keyspace and table ensured.");
+        } catch (Exception e) {
+            System.err.println("Failed to initialize Cassandra session.");
+            e.printStackTrace();
+        }
+    }
+
+    // Reuse the singleton session
+    public CqlSession getSession() {
+        if (session == null || session.isClosed()) {
+            session = CqlSession.builder()
+                .addContactPoint(new InetSocketAddress(CONTACT_POINT, PORT))
+                .withLocalDatacenter(LOCAL_DATACENTER)
+                .withKeyspace(KEYSPACE)
+                .build();
+        }
+        return session;
+    }
+
+    @Override
+    public void logSensorData(String jsonData) {
+        System.out.println("Logging sensor data to Cassandra: " + jsonData);
+        try {
+            JSONObject jsonObject =
+                SensorDataJsonHelper.getSensorDataJSONObject(jsonData);
+            PreparedStatement insertStatement = getSession().prepare(
+                "INSERT INTO sensor_data (recorded, location, sensor, measurement, units, value) VALUES (?, ?, ?, ?, ?, ?)"
+            );
+            BoundStatement boundStatement = insertStatement.bind(
+                (System.currentTimeMillis() / 1000),
+                jsonObject.getString("location"),
+                jsonObject.getString("sensor"),
+                jsonObject.getString("measurement"),
+                jsonObject.getString("units"),
+                jsonObject.getDouble("value")
+            );
+            getSession().execute(boundStatement);
+            System.out.println("SensorData stored");
+        } catch (Exception e) {
+            System.err.println("Failed to save sensor data from JSON");
+            e.printStackTrace();
+        }
+    }
+
+    @Override
+    public List<String> fetchSensorData() {
+        System.out.println("Fetching sensor data from Cassandra");
+        List<String> jsonStrings = new ArrayList<>();
+        try {
+            ResultSet resultSet = getSession().execute(
+                "SELECT JSON * FROM sensor_data"
+            );
+            for (Row row : resultSet) {
+                jsonStrings.add(row.getString("[json]"));
+            }
+            System.out.println("SensorData retrieved");
+        } catch (Exception e) {
+            System.err.println("Failed to retrieve sensor data");
+            e.printStackTrace();
+        }
+        return jsonStrings;
+    }
+
+    @Override
+    public void purgeSensorData() {
+        System.out.println("Purging sensor data from Cassandra");
+        try {
+            getSession().execute("TRUNCATE sensor_data");
+            System.out.println("Sensor Data purged\n");
+        } catch (Exception e) {
+            System.err.println("Failed to purge sensor data");
+            e.printStackTrace();
+        }
+    }
+
+    // Close the session when the application shuts down
+    public void close() {
+        if (session != null && !session.isClosed()) {
+            session.close();
+            System.out.println("Cassandra session closed.");
+        }
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/legos/spring-app/src/main/java/com/ggeoffre/data/MongoData.java
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package com.ggeoffre.data;
+
+import com.mongodb.client.*;
+import com.mongodb.client.model.Projections;
+import java.util.*;
+import org.bson.Document;
+
+public class MongoData implements SensorDataAccess {
+
+    private static final String MONGO_URI = "mongodb://localhost:27017";
+    private static final String DATABASE_NAME = "sensor_data_db";
+    private static final String COLLECTION_NAME = "sensor_data";
+
+    private final MongoClient mongoClient;
+    private final MongoCollection<Document> collection;
+
+    public MongoData() {
+        this.mongoClient = MongoClients.create(MONGO_URI);
+        MongoDatabase db = mongoClient.getDatabase(DATABASE_NAME);
+        this.collection = db.getCollection(COLLECTION_NAME);
+        System.out.println("MongoClient initialized and connected to MongoDB");
+    }
+
+    public MongoCollection<Document> getCollection() {
+        return collection;
+    }
+
+    @Override
+    public void logSensorData(String jsonData) {
+        System.out.println("Logging sensor data to MongoDB: " + jsonData);
+
+        Document sensorDoc = SensorDataJsonHelper.getSendorDataDocument(
+            jsonData
+        );
+        System.out.println("SensorData Document created from JSON");
+
+        try {
+            collection.insertOne(sensorDoc);
+            System.out.println("SensorData stored");
+        } catch (Exception e) {
+            System.err.println("Failed to insert sensor data");
+            e.printStackTrace();
+        }
+    }
+
+    @Override
+    public List<String> fetchSensorData() {
+        System.out.println("Fetching sensor data from MongoDB");
+
+        List<String> jsonStrings = new ArrayList<>();
+        try (
+            MongoCursor<Document> cursor = collection
+                .find()
+                .projection(Projections.excludeId())
+                .iterator()
+        ) {
+            while (cursor.hasNext()) {
+                jsonStrings.add(cursor.next().toJson());
+            }
+            System.out.println("SensorData retrieved");
+        } catch (Exception e) {
+            System.err.println("Failed to retrieve sensor data");
+            e.printStackTrace();
+        }
+        return jsonStrings;
+    }
+
+    @Override
+    public void purgeSensorData() {
+        System.out.println("Purging sensor data from MongoDB");
+
+        try {
+            collection.deleteMany(new Document());
+            System.out.println("SensorData purged");
+        } catch (Exception e) {
+            System.err.println("Failed to purge sensor data");
+            e.printStackTrace();
+        }
+    }
+
+    public void close() {
+        mongoClient.close();
+        System.out.println("MongoClient closed");
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/legos/spring-app/src/main/java/com/ggeoffre/data/MySQLData.java
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package com.ggeoffre.data;
+
+import java.sql.*;
+import java.util.*;
+import org.json.*;
+
+public class MySQLData implements SensorDataAccess {
+
+    // Configuration constants
+    private static final String HOST = "localhost";
+    private static final int PORT = 3306;
+    private static final String USER = "root";
+    private static final String PASSWORD = "";
+    private static final String DATABASE = "sensor_data_db";
+    private static final String TABLE = "sensor_data";
+
+    private Connection createConnection() throws SQLException {
+        String url = String.format(
+            "jdbc:mysql://%s:%d/%s",
+            HOST,
+            PORT,
+            DATABASE
+        );
+        return DriverManager.getConnection(url, USER, PASSWORD);
+    }
+
+    private Connection createSystemDbConnection() throws SQLException {
+        String url = String.format("jdbc:mysql://%s:%d/mysql", HOST, PORT);
+        return DriverManager.getConnection(url, USER, PASSWORD);
+    }
+
+    // Initialize the MySQL connection
+    private void init() throws SQLException {
+        // Connect to the system database
+        try (Connection connection = createSystemDbConnection()) {
+            System.out.println("Connected to MySQL (mysql database)");
+
+            // Create database if not exists
+            try (Statement stmt = connection.createStatement()) {
+                String createDbSql = String.format(
+                    "CREATE DATABASE IF NOT EXISTS %s;",
+                    DATABASE
+                );
+                stmt.executeUpdate(createDbSql);
+                System.out.println("Database ensured: " + DATABASE);
+            } catch (SQLException e) {
+                System.err.println(
+                    "Error creating database: " + e.getMessage()
+                );
+                e.printStackTrace();
+                return;
+            }
+        } catch (SQLException e) {
+            System.err.println(
+                "Failed to connect to the MySQL server (mysql database)."
+            );
+            e.printStackTrace();
+            return;
+        }
+
+        //connect to target database
+        try (
+            Connection connection = createConnection();
+            Statement stmt = connection.createStatement()
+        ) {
+            System.out.println("Connected to MySQL (" + DATABASE + ")");
+
+            // Create table if not exists
+            String createTableSql = String.format(
+                "CREATE TABLE IF NOT EXISTS %s (" +
+                    "recorded BIGINT NOT NULL, " +
+                    "location VARCHAR(255) NOT NULL, " +
+                    "sensor VARCHAR(255) NOT NULL, " +
+                    "measurement VARCHAR(255) NOT NULL, " +
+                    "units VARCHAR(10) NOT NULL, " +
+                    "value DECIMAL(5,2) NOT NULL" +
+                    ");",
+                TABLE
+            );
+            stmt.executeUpdate(createTableSql);
+            System.out.println("Table ensured: " + TABLE);
+        } catch (SQLException e) {
+            System.err.println("Error creating table: " + e.getMessage());
+            e.printStackTrace();
+            return;
+        }
+    }
+
+    @Override
+    public void logSensorData(String jsonData) {
+        System.out.println("Logging sensor data to MySQL: " + jsonData);
+
+        String insertSql =
+            "INSERT INTO sensor_data (recorded, location, sensor, measurement, units, value) VALUES (?, ?, ?, ?, ?, ?)";
+        try (Connection connection = createConnection()) {
+            JSONObject jsonObj = new JSONObject(jsonData);
+            System.out.println("SensorData marshalled to JSON");
+
+            // Validate or generate 'recorded' field
+            long recorded = jsonObj.has("recorded")
+                ? jsonObj.getLong("recorded")
+                : System.currentTimeMillis() / 1000;
+
+            try (
+                PreparedStatement pstmt = connection.prepareStatement(insertSql)
+            ) {
+                pstmt.setLong(1, recorded);
+                pstmt.setString(2, jsonObj.getString("location"));
+                pstmt.setString(3, jsonObj.getString("sensor"));
+                pstmt.setString(4, jsonObj.getString("measurement"));
+                pstmt.setString(5, jsonObj.getString("units"));
+                pstmt.setBigDecimal(6, jsonObj.getBigDecimal("value"));
+                pstmt.executeUpdate();
+            }
+            System.out.println("SensorData stored");
+        } catch (SQLException | JSONException e) {
+            System.err.println("Failed to store sensor data.");
+            e.printStackTrace();
+        }
+    }
+
+    @Override
+    public List<String> fetchSensorData() {
+        System.out.println("Fetching sensor data from MySQL");
+        String selectSql =
+            "SELECT recorded, location, sensor, measurement, units, value FROM sensor_data";
+        List<String> jsonStrings = new ArrayList<>();
+        try (
+            Connection connection = createConnection();
+            Statement stmt = connection.createStatement();
+            ResultSet rs = stmt.executeQuery(selectSql)
+        ) {
+            while (rs.next()) {
+                JSONObject jsonObj = new JSONObject();
+                jsonObj.put("recorded", rs.getLong("recorded"));
+                jsonObj.put("location", rs.getString("location"));
+                jsonObj.put("sensor", rs.getString("sensor"));
+                jsonObj.put("measurement", rs.getString("measurement"));
+                jsonObj.put("units", rs.getString("units"));
+                jsonObj.put("value", rs.getBigDecimal("value"));
+                jsonStrings.add(jsonObj.toString());
+            }
+            System.out.println("SensorData retrieved");
+        } catch (SQLException | JSONException e) {
+            System.err.println("Failed to retrieve sensor data.");
+            e.printStackTrace();
+        }
+        return jsonStrings;
+    }
+
+    @Override
+    public void purgeSensorData() {
+        System.out.println("Purging sensor data from MySQL");
+        String deleteSql = "DELETE FROM sensor_data";
+        try (
+            Connection connection = createConnection();
+            Statement stmt = connection.createStatement()
+        ) {
+            stmt.executeUpdate(deleteSql);
+            System.out.println("Sensor Data purged\n");
+        } catch (SQLException e) {
+            System.err.println("Failed to purge sensor data.");
+            e.printStackTrace();
+        }
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/legos/spring-app/src/main/java/com/ggeoffre/data/PostgresData.java
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package com.ggeoffre.data;
+
+import java.sql.*;
+import java.util.*;
+import org.json.*;
+
+public class PostgresData implements SensorDataAccess {
+
+    // Configuration constants
+    private static final String HOST = "localhost";
+    private static final int PORT = 5432;
+    private static final String USER = "postgres";
+    private static final String PASSWORD = "";
+    private static final String DATABASE = "sensor_data_db";
+    private static final String TABLE = "sensor_data";
+
+    private Connection createConnection() throws SQLException {
+        String url = String.format(
+            "jdbc:postgresql://%s:%d/%s",
+            HOST,
+            PORT,
+            DATABASE
+        );
+        return DriverManager.getConnection(url, USER, PASSWORD);
+    }
+
+    private Connection createSystemDatabaseConnection() throws SQLException {
+        String url = String.format(
+            "jdbc:postgresql://%s:%d/postgres",
+            HOST,
+            PORT
+        );
+        return DriverManager.getConnection(url, USER, PASSWORD);
+    }
+
+    public void init() {
+        System.out.println("Initializing PostgreSQL connection");
+        try (Connection connection = createSystemDatabaseConnection()) {
+            System.out.println("Connected to Postgres (postgres database)");
+
+            // Check if database exists, create if not
+            try (Statement stmt = connection.createStatement()) {
+                String checkDbSql = String.format(
+                    "SELECT 1 FROM pg_database WHERE datname = '%s'",
+                    DATABASE
+                );
+                ResultSet rs = stmt.executeQuery(checkDbSql);
+                boolean dbExists = rs.next();
+                rs.close();
+
+                if (!dbExists) {
+                    String createDbSql = String.format(
+                        "CREATE DATABASE %s;",
+                        DATABASE
+                    );
+                    stmt.executeUpdate(createDbSql);
+                    System.out.println("Database created: " + DATABASE);
+                } else {
+                    System.out.println("Database already exists: " + DATABASE);
+                }
+            } catch (SQLException e) {
+                System.err.println(
+                    "Error creating database: " + e.getMessage()
+                );
+                e.printStackTrace();
+                return;
+            }
+        } catch (SQLException e) {
+            System.err.println(
+                "Failed to connect to the Postgres server (postgres database)."
+            );
+            e.printStackTrace();
+            return;
+        }
+        try (Connection connection = createConnection()) {
+            System.out.println("Connected to Postgres (" + DATABASE + ")");
+
+            // Create table if not exists
+            try (Statement stmt = connection.createStatement()) {
+                String createTableSql = String.format(
+                    "CREATE TABLE IF NOT EXISTS %s (" +
+                        "recorded BIGINT NOT NULL, " +
+                        "location VARCHAR(255) NOT NULL, " +
+                        "sensor VARCHAR(255) NOT NULL, " +
+                        "measurement VARCHAR(255) NOT NULL, " +
+                        "units VARCHAR(255) NOT NULL, " +
+                        "value NUMERIC(10, 2) NOT NULL" +
+                        ");",
+                    TABLE
+                );
+                stmt.executeUpdate(createTableSql);
+                System.out.println("Table ensured: " + TABLE);
+            } catch (SQLException e) {
+                System.err.println("Error creating table: " + e.getMessage());
+                e.printStackTrace();
+                return;
+            }
+        } catch (SQLException e) {
+            System.err.println("Error initializing: " + e.getMessage());
+            e.printStackTrace();
+            return;
+        }
+    }
+
+    @Override
+    public void logSensorData(String jsonData) {
+        System.out.println("Logging sensor data to PostgreSQL: " + jsonData);
+        String insertSql =
+            "INSERT INTO sensor_data (recorded, location, sensor, measurement, units, value) VALUES (?, ?, ?, ?, ?, ?)";
+
+        try (Connection connection = createConnection()) {
+            JSONObject jsonObj = new JSONObject(jsonData);
+            System.out.println("SensorData marshalled to JSON");
+            long recorded = jsonObj.has("recorded")
+                ? jsonObj.getLong("recorded")
+                : System.currentTimeMillis() / 1000;
+
+            try (
+                PreparedStatement pstmt = connection.prepareStatement(insertSql)
+            ) {
+                pstmt.setLong(1, recorded);
+                pstmt.setString(2, jsonObj.getString("location"));
+                pstmt.setString(3, jsonObj.getString("sensor"));
+                pstmt.setString(4, jsonObj.getString("measurement"));
+                pstmt.setString(5, jsonObj.getString("units"));
+                pstmt.setBigDecimal(6, jsonObj.getBigDecimal("value"));
+                pstmt.executeUpdate();
+            }
+            System.out.println("SensorData stored");
+        } catch (SQLException | JSONException e) {
+            System.err.println("Failed to store sensor data.");
+            e.printStackTrace();
+        }
+    }
+
+    @Override
+    public List<String> fetchSensorData() {
+        System.out.println("Fetching sensor data from PostgreSQL");
+        String selectSql =
+            "SELECT recorded, location, sensor, measurement, units, value FROM sensor_data";
+        List<String> jsonList = new ArrayList<>();
+        try (
+            Connection connection = createConnection();
+            Statement stmt = connection.createStatement();
+            ResultSet rs = stmt.executeQuery(selectSql)
+        ) {
+            while (rs.next()) {
+                JSONObject jsonObj = new JSONObject();
+                jsonObj.put("recorded", rs.getLong("recorded"));
+                jsonObj.put("location", rs.getString("location"));
+                jsonObj.put("sensor", rs.getString("sensor"));
+                jsonObj.put("measurement", rs.getString("measurement"));
+                jsonObj.put("units", rs.getString("units"));
+                jsonObj.put("value", rs.getBigDecimal("value"));
+                jsonList.add(jsonObj.toString());
+            }
+            System.out.println("SensorData retrieved");
+        } catch (SQLException | JSONException e) {
+            System.err.println("Failed to retrieve sensor data.");
+            e.printStackTrace();
+        }
+        return Collections.unmodifiableList(jsonList);
+    }
+
+    @Override
+    public void purgeSensorData() {
+        System.out.println("Purging sensor data from PostgreSQL");
+        String deleteSql = "DELETE FROM sensor_data";
+        try (
+            Connection connection = createConnection();
+            Statement stmt = connection.createStatement()
+        ) {
+            stmt.executeUpdate(deleteSql);
+            System.out.println("Sensor Data purged\n");
+        } catch (SQLException e) {
+            System.err.println("Failed to purge sensor data.");
+            e.printStackTrace();
+        }
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/legos/spring-app/src/main/java/com/ggeoffre/data/RedisData.java
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package com.ggeoffre.data;
+
+import java.util.*;
+import redis.clients.jedis.Jedis;
+
+public class RedisData implements SensorDataAccess {
+
+    // Configuration constants (consider externalizing for production)
+    private static final String REDIS_HOST = "localhost";
+    private static final int REDIS_PORT = 6379;
+    private static final String SENSOR_DATA_KEY = "sensor_data_db:sensor_data";
+
+    /**
+     * Processes sensor data: inserts, retrieves, prints as CSV, and purges the list.
+     */
+    public Jedis getJedisClient() {
+        try {
+            Jedis jedisClient = new Jedis(REDIS_HOST, REDIS_PORT);
+            System.out.println("Connected to Redis database.");
+            return jedisClient;
+        } catch (Exception e) {
+            System.err.println("Failed to connect to Redis database.");
+            e.printStackTrace();
+            throw e;
+        }
+    }
+
+    // Store sensor data
+    @Override
+    public void logSensorData(String jsonData) {
+        System.out.println("Logging sensor data to Redis: " + jsonData);
+        try {
+            Jedis jedisClient = getJedisClient();
+            jedisClient.rpush(SENSOR_DATA_KEY, jsonData);
+            System.out.println("SensorData stored");
+        } catch (Exception e) {
+            System.err.println("Failed to store sensor data in Redis.");
+            e.printStackTrace();
+        }
+    }
+
+    // Retrieve sensor data
+    @Override
+    public List<String> fetchSensorData() {
+        System.out.println("Fetching sensor data from Redis");
+        List<String> jsonStrs = null;
+        try {
+            Jedis jedisClient = getJedisClient();
+            jsonStrs = jedisClient.lrange(SENSOR_DATA_KEY, 0, -1);
+        } catch (Exception e) {
+            System.err.println("Failed to retrieve sensor data from Redis.");
+            e.printStackTrace();
+        }
+        return jsonStrs != null ? jsonStrs : Collections.emptyList();
+    }
+
+    // Purge sensor data (use with caution in production!)
+    @Override
+    public void purgeSensorData() {
+        System.out.println("Purging sensor data from Redis");
+        try {
+            Jedis jedisClient = getJedisClient();
+            jedisClient.del(SENSOR_DATA_KEY);
+            System.out.println("Sensor Data purged\n");
+        } catch (Exception e) {
+            System.err.println("Failed to purge sensor data in Redis.");
+            e.printStackTrace();
+        }
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/legos/spring-app/src/main/java/com/ggeoffre/data/SensorDataAccess.java
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package com.ggeoffre.data;
+
+import java.util.List;
+
+public interface SensorDataAccess {
+    void logSensorData(String jsonData);
+    List<String> fetchSensorData();
+    void purgeSensorData();
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/legos/spring-app/src/main/java/com/ggeoffre/data/SensorDataJsonHelper.java
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package com.ggeoffre.data;
+
+import java.util.*;
+import org.bson.Document;
+import org.json.*;
+
+public class SensorDataJsonHelper {
+
+    public static final String SENSOR_DATA_JSON_STRING =
+        "{\"recorded\": 1768237200, \"location\": \"den\", \"sensor\": \"bmp280\", \"measurement\": \"temperature\", \"units\": \"C\", \"value\": 22.3}";
+
+    public static Document getSendorDataDocument(String sensorJsonString) {
+        return Document.parse(sensorJsonString);
+    }
+
+    public static JSONObject getSensorDataJSONObject(String sensorJsonString) {
+        return new JSONObject(sensorJsonString);
+    }
+
+    public static String getSensorDataJSONString(Document sensorDocument) {
+        return sensorDocument.toJson();
+    }
+
+    // Custom exception for JSON utility operations
+    public static class JsonUtilityException extends RuntimeException {
+
+        public JsonUtilityException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
+    // Converts an array of JSON strings to a CSV format.
+    public static String jsonArrayToCsv(String[] jsonStrings) {
+        if (jsonStrings == null || jsonStrings.length == 0) {
+            return "";
+        }
+
+        try {
+            List<String> headers = new ArrayList<>();
+            List<List<String>> rows = new ArrayList<>();
+
+            for (String jsonString : jsonStrings) {
+                if (jsonString == null || jsonString.isEmpty()) {
+                    continue;
+                }
+                JSONObject jsonObject = new JSONObject(jsonString);
+                List<String> row = new ArrayList<>();
+
+                for (String key : jsonObject.keySet()) {
+                    if (!headers.contains(key)) {
+                        headers.add(key);
+                    }
+                    row.add(jsonObject.optString(key, ""));
+                }
+                rows.add(row);
+            }
+
+            StringBuilder csvBuilder = new StringBuilder();
+            csvBuilder.append(String.join(",", headers)).append("\n");
+
+            for (List<String> row : rows) {
+                List<String> orderedRow = new ArrayList<>();
+                for (String header : headers) {
+                    int index = headers.indexOf(header);
+                    orderedRow.add(index < row.size() ? row.get(index) : "");
+                }
+                csvBuilder.append(String.join(",", orderedRow)).append("\n");
+            }
+
+            return csvBuilder.toString();
+        } catch (Exception e) {
+            throw new JsonUtilityException(
+                "Error converting JSON array to CSV",
+                e
+            );
+        }
+    }
+}
+
+
+
+========================================
+PROJECT: access
+PATH: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/access
+========================================
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/access/src/main/java/com/ggeoffre/app/Main.java
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package com.ggeoffre.app;
+
+import com.geoffrey.data.access.*;
+import java.util.Scanner;
+
+public class Main {
+
+    public static SensorDataAccess getDataAccess() {
+        String dataAccessType = System.getenv("DATA_ACCESS");
+        if (dataAccessType == null || dataAccessType.isEmpty()) {
+            dataAccessType = "redis";
+        }
+        switch (dataAccessType.toLowerCase()) {
+            case "redis":
+                return new RedisDataAccess();
+            case "mongo":
+                return new MongoDataAccess();
+            case "cassandra":
+                return new CassandraDataAccess();
+            case "mysql":
+                return new MySQLDataAccess();
+            case "postgres":
+                return new PostgresDataAccess();
+            default:
+                throw new IllegalArgumentException(
+                    "Unsupported DATA_ACCESS type: " + dataAccessType
+                );
+        }
+    }
+
+    public static void main(String[] args) {
+        SensorDataAccess dataAccess = getDataAccess();
+
+        dataAccess.logSensorData(
+            "{\"sensor\": \"temperature\", \"value\": 22.3}"
+        );
+        System.out.println(
+            "Fetched sensor data: " + dataAccess.fetchSensorData()
+        );
+        dataAccess.purgeSensorData();
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/access/src/main/java/com/ggeoffre/data/access/CassandraDataAccess.java
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package com.geoffrey.data.access;
+
+import java.util.Collections;
+import java.util.List;
+
+public class CassandraDataAccess implements SensorDataAccess {
+
+    @Override
+    public void logSensorData(String jsonData) {
+        System.out.println("Logging sensor data to Cassandra: " + jsonData);
+    }
+
+    @Override
+    public List<String> fetchSensorData() {
+        System.out.println("Fetching sensor data from Cassandra");
+        return Collections.singletonList(
+            "{\"sensor\": \"pressure\", \"value\": 1013}"
+        );
+    }
+
+    @Override
+    public void purgeSensorData() {
+        System.out.println("Purging sensor data from Cassandra");
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/access/src/main/java/com/ggeoffre/data/access/MongoDataAccess.java
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package com.geoffrey.data.access;
+
+import java.util.Collections;
+import java.util.List;
+
+public class MongoDataAccess implements SensorDataAccess {
+
+    @Override
+    public void logSensorData(String jsonData) {
+        System.out.println("Logging sensor data to MongoDB: " + jsonData);
+    }
+
+    @Override
+    public List<String> fetchSensorData() {
+        System.out.println("Fetching sensor data from MongoDB");
+        return Collections.singletonList(
+            "{\"sensor\": \"humidity\", \"value\": 45.6}"
+        );
+    }
+
+    @Override
+    public void purgeSensorData() {
+        System.out.println("Purging sensor data from MongoDB");
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/access/src/main/java/com/ggeoffre/data/access/MySQLDataAccess.java
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package com.geoffrey.data.access;
+
+import java.util.Collections;
+import java.util.List;
+
+public class MySQLDataAccess implements SensorDataAccess {
+
+    @Override
+    public void logSensorData(String jsonData) {
+        System.out.println("Logging sensor data to MySQL: " + jsonData);
+    }
+
+    @Override
+    public List<String> fetchSensorData() {
+        System.out.println("Fetching sensor data from MySQL");
+        return Collections.singletonList(
+            "{\"sensor\": \"light\", \"value\": 300}"
+        );
+    }
+
+    @Override
+    public void purgeSensorData() {
+        System.out.println("Purging sensor data from MySQL");
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/access/src/main/java/com/ggeoffre/data/access/PostgresDataAccess.java
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package com.geoffrey.data.access;
+
+import java.util.Collections;
+import java.util.List;
+
+public class PostgresDataAccess implements SensorDataAccess {
+
+    @Override
+    public void logSensorData(String jsonData) {
+        System.out.println("Logging sensor data to PostgreSQL: " + jsonData);
+    }
+
+    @Override
+    public List<String> fetchSensorData() {
+        System.out.println("Fetching sensor data from PostgreSQL");
+        return Collections.singletonList(
+            "{\"sensor\": \"sound\", \"value\": 75}"
+        );
+    }
+
+    @Override
+    public void purgeSensorData() {
+        System.out.println("Purging sensor data from PostgreSQL");
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/access/src/main/java/com/ggeoffre/data/access/RedisDataAccess.java
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package com.geoffrey.data.access;
+
+import java.util.Collections;
+import java.util.List;
+
+public class RedisDataAccess implements SensorDataAccess {
+
+    @Override
+    public void logSensorData(String jsonData) {
+        System.out.println("Logging sensor data to Redis: " + jsonData);
+    }
+
+    @Override
+    public List<String> fetchSensorData() {
+        System.out.println("Fetching sensor data from Redis");
+        return Collections.singletonList(
+            "{\"sensor\": \"temperature\", \"value\": 22.3}"
+        );
+    }
+
+    @Override
+    public void purgeSensorData() {
+        System.out.println("Purging sensor data from Redis");
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/access/src/main/java/com/ggeoffre/data/access/SensorDataAccess.java
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package com.geoffrey.data.access;
+
+import java.util.List;
+
+public interface SensorDataAccess {
+    void logSensorData(String jsonData);
+    List<String> fetchSensorData();
+    void purgeSensorData();
+}
+
+
+
+========================================
+PROJECT: quarkus-app
+PATH: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/api/quarkus-app
+========================================
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/api/quarkus-app/src/main/java/com/ggeoffre/RootResource.java
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package com.ggeoffre;
+
+import jakarta.ws.rs.*;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+import org.json.JSONObject;
+
+@Path("/")
+public class RootResource {
+
+    public static final String SAMPLE_JSON =
+        "{ \"recorded\" : 1756655999, \"location\" : \"den\", \"sensor\" : \"bmp280\", \"measurement\" : \"temperature\", \"units\" : \"C\", \"value\" : 22.3 }";
+
+    public static String jsonToCsv(String jsonString) throws Exception {
+        // Parse JSON using java.util and org.json
+        org.json.JSONObject jsonObject = new org.json.JSONObject(jsonString);
+
+        StringBuilder csvBuilder = new StringBuilder();
+        StringBuilder headerBuilder = new StringBuilder();
+        StringBuilder valueBuilder = new StringBuilder();
+
+        for (String key : jsonObject.keySet()) {
+            headerBuilder.append(key).append(",");
+            valueBuilder.append(jsonObject.get(key).toString()).append(",");
+        }
+
+        // Remove trailing commas
+        if (headerBuilder.length() > 0) {
+            headerBuilder.setLength(headerBuilder.length() - 1);
+        }
+        if (valueBuilder.length() > 0) {
+            valueBuilder.setLength(valueBuilder.length() - 1);
+        }
+
+        csvBuilder.append(headerBuilder).append("\n").append(valueBuilder);
+        return csvBuilder.toString();
+    }
+
+    @GET
+    @Produces(MediaType.APPLICATION_JSON)
+    public String root() {
+        return "{\"message\": \"Quarkus API Server is running!\"}";
+    }
+
+    @POST
+    @Path("/echo")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public String echo(String json) {
+        return json;
+    }
+
+    @POST
+    @Path("/log")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public String log(String logMessage) {
+        return logMessage;
+    }
+
+    @GET
+    @Path("/report")
+    @Produces(MediaType.TEXT_PLAIN)
+    public jakarta.ws.rs.core.Response report() {
+        try {
+            String csvData = jsonToCsv(SAMPLE_JSON);
+            return jakarta.ws.rs.core.Response.ok(csvData)
+                .header(
+                    "Content-Disposition",
+                    "attachment; filename=\"report.csv\""
+                )
+                .header("Content-Type", "text/csv")
+                .build();
+        } catch (Exception e) {
+            return jakarta.ws.rs.core.Response.status(
+                jakarta.ws.rs.core.Response.Status.INTERNAL_SERVER_ERROR
+            )
+                .entity("Error generating CSV: " + e.getMessage())
+                .build();
+        }
+    }
+
+    @Path("/purge")
+    @Consumes(MediaType.TEXT_PLAIN)
+    @Produces(MediaType.APPLICATION_JSON)
+    @GET
+    @POST
+    public String purge() {
+        return "{\"message\": \"Purge operation executed\"}";
+    }
+}
+
+
+
+========================================
+PROJECT: spring-app
+PATH: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/api/spring-app
+========================================
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/api/spring-app/src/main/java/com/ggeoffre/ProjectApplication.java
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package com.ggeoffre;
+
+import java.util.*;
+import org.json.*;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RestController;
+
+@SpringBootApplication
+public class ProjectApplication {
+
+    public static final String SAMPLE_JSON =
+        "{ \"recorded\" : 1756655999, \"location\" : \"den\", \"sensor\" : \"bmp280\", \"measurement\" : \"temperature\", \"units\" : \"C\", \"value\" : 22.3 }";
+
+    public static String jsonToCsv(String jsonString) throws Exception {
+        // Parse JSON using java.util and org.json
+        org.json.JSONObject jsonObject = new org.json.JSONObject(jsonString);
+
+        StringBuilder csvBuilder = new StringBuilder();
+        StringBuilder headerBuilder = new StringBuilder();
+        StringBuilder valueBuilder = new StringBuilder();
+
+        for (String key : jsonObject.keySet()) {
+            headerBuilder.append(key).append(",");
+            valueBuilder.append(jsonObject.get(key).toString()).append(",");
+        }
+
+        // Remove trailing commas
+        if (headerBuilder.length() > 0) {
+            headerBuilder.setLength(headerBuilder.length() - 1);
+        }
+        if (valueBuilder.length() > 0) {
+            valueBuilder.setLength(valueBuilder.length() - 1);
+        }
+
+        csvBuilder.append(headerBuilder).append("\n").append(valueBuilder);
+        return csvBuilder.toString();
+    }
+
+    public static void main(String[] args) {
+        SpringApplication.run(ProjectApplication.class, args);
+    }
+}
+
+@RestController
+@RequestMapping("/")
+class SensorDataApiController {
+
+    @GetMapping
+    public Map<String, String> sayHello() {
+        return Map.of("message", "Spring API Server is running!");
+    }
+
+    @PostMapping("/echo")
+    public Map<String, Object> echo(@RequestBody Map<String, Object> data) {
+        return data;
+    }
+
+    @PostMapping("/log")
+    public Map<String, Object> log(@RequestBody Map<String, Object> data) {
+        // Simply return the received JSON object
+        return data;
+    }
+
+    @GetMapping("/report")
+    public ResponseEntity<Resource> getReport() throws Exception {
+        String csvData = ProjectApplication.jsonToCsv(
+            ProjectApplication.SAMPLE_JSON
+        );
+
+        ByteArrayResource resource = new ByteArrayResource(csvData.getBytes());
+        HttpHeaders headers = new HttpHeaders();
+        headers.add(
+            HttpHeaders.CONTENT_DISPOSITION,
+            "attachment; filename=report.csv"
+        );
+        headers.add(HttpHeaders.CONTENT_TYPE, "text/csv");
+
+        return ResponseEntity.ok()
+            .headers(headers)
+            .contentLength(csvData.length())
+            .body(resource);
+    }
+
+    @RequestMapping(
+        value = "/purge",
+        method = { RequestMethod.GET, RequestMethod.POST }
+    )
+    public Map<String, String> purge() {
+        // Here you can add logic to handle purge
+        return Map.of("message", "Purge operation completed");
+    }
+}
+
+
+
+========================================
+PROJECT: data
+PATH: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/data
+========================================
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/data/src/java/com/ggeoffre/app/Main.java
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package com.geoffrey.app;
+
+import com.geoffrey.database.*;
+
+public class Main {
+
+    public static void main(String[] args) {
+        try {
+            CassandraData.processSensorData();
+        } catch (Exception e) {
+            System.out.println(
+                "Error connecting to Cassandra: " + e.getMessage()
+            );
+        }
+        try {
+            MongoData.processSensorData();
+        } catch (Exception e) {
+            System.out.println(
+                "Error connecting to MongoDB: " + e.getMessage()
+            );
+        }
+        try {
+            MySQLData.processSensorData();
+        } catch (Exception e) {
+            System.out.println("Error connecting to MySQL: " + e.getMessage());
+        }
+        try {
+            PostgresData.processSensorData();
+        } catch (Exception e) {
+            System.out.println(
+                "Error connecting to PostgreSQL: " + e.getMessage()
+            );
+        }
+        try {
+            RedisData.processSensorData();
+        } catch (Exception e) {
+            System.out.println("Error connecting to Redis: " + e.getMessage());
+        }
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/data/src/java/com/ggeoffre/database/CassandraData.java
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package com.geoffrey.database;
+
+import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.cql.*;
+import java.net.InetSocketAddress;
+import java.util.*;
+import org.json.*;
+
+public class CassandraData {
+
+    // Configuration constants
+    private static final String CONTACT_POINT = "localhost";
+    private static final int PORT = 9042;
+    private static final String LOCAL_DATACENTER = "datacenter1";
+    private static final String KEYSPACE = "sensor_data_db";
+    private static final String TABLE = "sensor_data";
+
+    public static void processSensorData() {
+        System.out.println("CASSANDRA");
+        System.out.println("#########");
+
+        // Step 1: Connect to the "system" keyspace to create the keyspace if needed
+        try (
+            CqlSession session = CqlSession.builder()
+                .addContactPoint(new InetSocketAddress(CONTACT_POINT, PORT))
+                .withLocalDatacenter(LOCAL_DATACENTER)
+                .withKeyspace("system")
+                .build()
+        ) {
+            System.out.println("Connected to Cassandra (system keyspace)");
+
+            // Create keyspace if not exists
+            String createKeyspace = String.format(
+                "CREATE KEYSPACE IF NOT EXISTS %s WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 };",
+                KEYSPACE
+            );
+            session.execute(createKeyspace);
+            System.out.println("Keyspace ensured: " + KEYSPACE);
+        } catch (Exception e) {
+            System.err.println(
+                "Failed to connect to Cassandra (system keyspace) or create keyspace."
+            );
+            e.printStackTrace();
+            return;
+        }
+
+        // Step 2: Connect to the target keyspace for all further operations
+        try (
+            CqlSession session = CqlSession.builder()
+                .addContactPoint(new InetSocketAddress(CONTACT_POINT, PORT))
+                .withLocalDatacenter(LOCAL_DATACENTER)
+                .withKeyspace(KEYSPACE)
+                .build()
+        ) {
+            System.out.println(
+                "Connected to Cassandra (keyspace: " + KEYSPACE + ")"
+            );
+
+            // Create table if not exists
+            try {
+                String createTable = String.format(
+                    "CREATE TABLE IF NOT EXISTS %s (" +
+                        "recorded bigint, " +
+                        "location text, " +
+                        "sensor text, " +
+                        "measurement text, " +
+                        "units text, " +
+                        "value double, " +
+                        "PRIMARY KEY (recorded, location, sensor)" +
+                        ");",
+                    TABLE
+                );
+                session.execute(createTable);
+                System.out.println("Table ensured: " + TABLE);
+            } catch (Exception e) {
+                System.err.println("Error creating table: " + e.getMessage());
+                e.printStackTrace();
+                return;
+            }
+
+            // Store sensor data
+            try {
+                JSONObject jsonObject =
+                    SensorDataJsonHelper.getSensorDataJSONObject();
+                System.out.println("JSON string marshalled to JSON Object");
+                PreparedStatement insertStatement = session.prepare(
+                    "INSERT INTO sensor_data (recorded, location, sensor, measurement, units, value) VALUES (?, ?, ?, ?, ?, ?)"
+                );
+                BoundStatement boundStatement = insertStatement.bind(
+                    (System.currentTimeMillis() / 1000),
+                    jsonObject.getString("location"),
+                    jsonObject.getString("sensor"),
+                    jsonObject.getString("measurement"),
+                    jsonObject.getString("units"),
+                    jsonObject.getDouble("value")
+                );
+                session.execute(boundStatement);
+                System.out.println("SensorData stored");
+            } catch (Exception e) {
+                System.err.println("Failed to save sensor data from JSON");
+                e.printStackTrace();
+            }
+
+            // Retrieve sensor data
+            List<String> jsonStrings = new ArrayList<>();
+            try {
+                ResultSet resultSet = session.execute(
+                    "SELECT JSON * FROM sensor_data"
+                );
+                for (Row row : resultSet) {
+                    jsonStrings.add(row.getString("[json]"));
+                }
+                System.out.println("SensorData retrieved");
+            } catch (Exception e) {
+                System.err.println("Failed to retrieve sensor data");
+                e.printStackTrace();
+            }
+
+            // Print as CSV
+            try {
+                System.out.print(
+                    SensorDataJsonHelper.jsonArrayToCsv(
+                        jsonStrings.toArray(new String[0])
+                    )
+                );
+            } catch (Exception e) {
+                System.err.println("Failed to convert JSON to CSV");
+                e.printStackTrace();
+            }
+
+            // Purge sensor data
+            try {
+                session.execute("TRUNCATE sensor_data");
+                System.out.println("Sensor Data purged\n");
+            } catch (Exception e) {
+                System.err.println("Failed to purge sensor data");
+                e.printStackTrace();
+            }
+        } catch (Exception e) {
+            System.err.println(
+                "Failed to connect to Cassandra (with keyspace) or perform operations."
+            );
+            e.printStackTrace();
+        }
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/data/src/java/com/ggeoffre/database/MongoData.java
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package com.geoffrey.database;
+
+import com.geoffrey.database.SensorDataJsonHelper;
+import com.mongodb.client.*;
+import com.mongodb.client.model.Projections;
+import java.util.*;
+import org.bson.Document;
+
+public class MongoData {
+
+    // Configuration constants (consider externalizing for production)
+    private static final String MONGO_URI = "mongodb://localhost:27017";
+    private static final String DATABASE_NAME = "sensor_data_db";
+    private static final String COLLECTION_NAME = "sensor_data";
+
+    /**
+     * Processes sensor data: inserts, retrieves, prints as CSV, and purges the collection.
+     */
+    public static void processSensorData() {
+        System.out.println("MONGO");
+        System.out.println("#####");
+
+        // Try-with-resources ensures MongoClient is always closed
+        try (MongoClient mongoClient = MongoClients.create(MONGO_URI)) {
+            // Get the database and collection
+            MongoDatabase db = mongoClient.getDatabase(DATABASE_NAME);
+            MongoCollection<Document> collection = db.getCollection(
+                COLLECTION_NAME
+            );
+
+            System.out.println("Connected to Mongo");
+
+            // Convert JSON string to BSON Document
+            Document sensorDoc = SensorDataJsonHelper.getSensorDataDocument();
+            System.out.println("SensorData Document created from JSON");
+
+            // Insert the document
+            try {
+                collection.insertOne(sensorDoc);
+                System.out.println("SensorData stored");
+            } catch (Exception e) {
+                System.err.println("Failed to insert sensor data");
+                e.printStackTrace();
+            }
+
+            // Retrieve all documents and convert to a JSON strings array
+            List<String> jsonStrings = new ArrayList<>();
+            try (
+                MongoCursor<Document> cursor = collection
+                    .find()
+                    .projection(Projections.excludeId())
+                    .iterator()
+            ) {
+                while (cursor.hasNext()) {
+                    jsonStrings.add(cursor.next().toJson());
+                }
+                System.out.println("SensorData retrieved");
+            } catch (Exception e) {
+                System.err.println("Failed to retrieve sensor data");
+                e.printStackTrace();
+            }
+
+            // Print as CSV
+            try {
+                System.out.print(
+                    SensorDataJsonHelper.jsonArrayToCsv(
+                        jsonStrings.toArray(new String[0])
+                    )
+                );
+            } catch (Exception e) {
+                System.err.println("Failed to convert JSON to CSV");
+                e.printStackTrace();
+            }
+
+            // Delete all documents (use with caution in production!)
+            try {
+                collection.deleteMany(new Document());
+                System.out.println("SensorData purged\n");
+            } catch (Exception e) {
+                System.err.println("Failed to purge sensor data");
+                e.printStackTrace();
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to connect to MongoDB");
+            e.printStackTrace();
+        }
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/data/src/java/com/ggeoffre/database/MySQLData.java
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package com.geoffrey.database;
+
+import com.geoffrey.database.SensorDataJsonHelper;
+import java.sql.*;
+import java.util.*;
+import org.json.*;
+
+public class MySQLData {
+
+    // Configuration constants
+    private static final String HOST = "localhost";
+    private static final int PORT = 3306;
+    private static final String USER = "root";
+    private static final String PASSWORD = "";
+    private static final String DATABASE = "sensor_data_db";
+    private static final String TABLE = "sensor_data";
+
+    public static void processSensorData() {
+        System.out.println("MYSQL");
+        System.out.println("#####");
+
+        // Step 1: Connect to the default "mysql" database to create the target database if needed
+        String urlMysql = String.format("jdbc:mysql://%s:%d/mysql", HOST, PORT);
+        try (
+            Connection connection = DriverManager.getConnection(
+                urlMysql,
+                USER,
+                PASSWORD
+            )
+        ) {
+            System.out.println("Connected to MySQL (mysql database)");
+
+            // Create database if not exists
+            try (Statement stmt = connection.createStatement()) {
+                String createDbSql = String.format(
+                    "CREATE DATABASE IF NOT EXISTS %s;",
+                    DATABASE
+                );
+                stmt.executeUpdate(createDbSql);
+                System.out.println("Database ensured: " + DATABASE);
+            } catch (SQLException e) {
+                System.err.println(
+                    "Error creating database: " + e.getMessage()
+                );
+                e.printStackTrace();
+                return;
+            }
+        } catch (SQLException e) {
+            System.err.println(
+                "Failed to connect to the MySQL server (mysql database)."
+            );
+            e.printStackTrace();
+            return;
+        }
+
+        // Step 2: Connect to the target database for all further operations
+        String urlTargetDb = String.format(
+            "jdbc:mysql://%s:%d/%s",
+            HOST,
+            PORT,
+            DATABASE
+        );
+        try (
+            Connection connection = DriverManager.getConnection(
+                urlTargetDb,
+                USER,
+                PASSWORD
+            )
+        ) {
+            System.out.println("Connected to MySQL (" + DATABASE + ")");
+
+            // Create table if not exists
+            try (Statement stmt = connection.createStatement()) {
+                String createTableSql = String.format(
+                    "CREATE TABLE IF NOT EXISTS %s (" +
+                        "recorded BIGINT NOT NULL, " +
+                        "location VARCHAR(255) NOT NULL, " +
+                        "sensor VARCHAR(255) NOT NULL, " +
+                        "measurement VARCHAR(255) NOT NULL, " +
+                        "units VARCHAR(10) NOT NULL, " +
+                        "value DECIMAL(5,2) NOT NULL" +
+                        ");",
+                    TABLE
+                );
+                stmt.executeUpdate(createTableSql);
+                System.out.println("Table ensured: " + TABLE);
+            } catch (SQLException e) {
+                System.err.println("Error creating table: " + e.getMessage());
+                e.printStackTrace();
+                return;
+            }
+
+            // Store sensor data
+            String insertSql =
+                "INSERT INTO sensor_data (recorded, location, sensor, measurement, units, value) VALUES (?, ?, ?, ?, ?, ?)";
+            try {
+                JSONObject jsonObj =
+                    SensorDataJsonHelper.getSensorDataJSONObject();
+                System.out.println("SensorData marshalled to JSON");
+
+                // Validate or generate 'recorded' field
+                long recorded = jsonObj.has("recorded")
+                    ? jsonObj.getLong("recorded")
+                    : System.currentTimeMillis() / 1000;
+
+                try (
+                    PreparedStatement pstmt = connection.prepareStatement(
+                        insertSql
+                    )
+                ) {
+                    pstmt.setLong(1, recorded);
+                    pstmt.setString(2, jsonObj.getString("location"));
+                    pstmt.setString(3, jsonObj.getString("sensor"));
+                    pstmt.setString(4, jsonObj.getString("measurement"));
+                    pstmt.setString(5, jsonObj.getString("units"));
+                    pstmt.setBigDecimal(6, jsonObj.getBigDecimal("value"));
+                    pstmt.executeUpdate();
+                }
+                System.out.println("SensorData stored");
+            } catch (SQLException | JSONException e) {
+                System.err.println("Failed to store sensor data.");
+                e.printStackTrace();
+            }
+
+            // Retrieve sensor data
+            String selectSql =
+                "SELECT recorded, location, sensor, measurement, units, value FROM sensor_data";
+            List<String> jsonStrings = new ArrayList<>();
+            try (
+                Statement stmt = connection.createStatement();
+                ResultSet rs = stmt.executeQuery(selectSql)
+            ) {
+                while (rs.next()) {
+                    JSONObject jsonObj = new JSONObject();
+                    jsonObj.put("recorded", rs.getLong("recorded"));
+                    jsonObj.put("location", rs.getString("location"));
+                    jsonObj.put("sensor", rs.getString("sensor"));
+                    jsonObj.put("measurement", rs.getString("measurement"));
+                    jsonObj.put("units", rs.getString("units"));
+                    jsonObj.put("value", rs.getBigDecimal("value"));
+                    jsonStrings.add(jsonObj.toString());
+                }
+                System.out.println("SensorData retrieved");
+            } catch (SQLException | JSONException e) {
+                System.err.println("Failed to retrieve sensor data.");
+                e.printStackTrace();
+            }
+
+            // Print as CSV
+            try {
+                System.out.print(
+                    SensorDataJsonHelper.jsonArrayToCsv(
+                        jsonStrings.toArray(new String[0])
+                    )
+                );
+            } catch (Exception e) {
+                System.err.println("Failed to convert JSON to CSV.");
+                e.printStackTrace();
+            }
+
+            // Purge sensor data (use with caution in production!)
+            String deleteSql = "DELETE FROM sensor_data";
+            try (Statement stmt = connection.createStatement()) {
+                stmt.executeUpdate(deleteSql);
+                System.out.println("Sensor Data purged\n");
+            } catch (SQLException e) {
+                System.err.println("Failed to purge sensor data.");
+                e.printStackTrace();
+            }
+        } catch (SQLException e) {
+            System.err.println("Failed to connect to the MySQL database.");
+            e.printStackTrace();
+        }
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/data/src/java/com/ggeoffre/database/PostgresData.java
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package com.geoffrey.database;
+
+import com.geoffrey.database.SensorDataJsonHelper;
+import java.sql.*;
+import java.util.*;
+import org.json.*;
+
+public class PostgresData {
+
+    // Configuration constants
+    private static final String HOST = "localhost";
+    private static final int PORT = 5432;
+    private static final String USER = "postgres";
+    private static final String PASSWORD = "";
+    private static final String DATABASE = "sensor_data_db";
+    private static final String TABLE = "sensor_data";
+
+    public static void processSensorData() {
+        System.out.println("POSTGRES");
+        System.out.println("########");
+
+        // Step 1: Connect to the default "postgres" database to create the target database if needed
+        String urlPostgres = String.format(
+            "jdbc:postgresql://%s:%d/postgres",
+            HOST,
+            PORT
+        );
+        try (
+            Connection connection = DriverManager.getConnection(
+                urlPostgres,
+                USER,
+                PASSWORD
+            )
+        ) {
+            System.out.println("Connected to Postgres (postgres database)");
+
+            // Check if database exists, create if not
+            try (Statement stmt = connection.createStatement()) {
+                String checkDbSql = String.format(
+                    "SELECT 1 FROM pg_database WHERE datname = '%s'",
+                    DATABASE
+                );
+                ResultSet rs = stmt.executeQuery(checkDbSql);
+                boolean dbExists = rs.next();
+                rs.close();
+
+                if (!dbExists) {
+                    String createDbSql = String.format(
+                        "CREATE DATABASE %s;",
+                        DATABASE
+                    );
+                    stmt.executeUpdate(createDbSql);
+                    System.out.println("Database created: " + DATABASE);
+                } else {
+                    System.out.println("Database already exists: " + DATABASE);
+                }
+            } catch (SQLException e) {
+                System.err.println(
+                    "Error creating database: " + e.getMessage()
+                );
+                e.printStackTrace();
+                return;
+            }
+        } catch (SQLException e) {
+            System.err.println(
+                "Failed to connect to the Postgres server (postgres database)."
+            );
+            e.printStackTrace();
+            return;
+        }
+
+        // Step 2: Connect to the target database for all further operations
+        String urlTargetDb = String.format(
+            "jdbc:postgresql://%s:%d/%s",
+            HOST,
+            PORT,
+            DATABASE
+        );
+        try (
+            Connection connection = DriverManager.getConnection(
+                urlTargetDb,
+                USER,
+                PASSWORD
+            )
+        ) {
+            System.out.println("Connected to Postgres (" + DATABASE + ")");
+
+            // Create table if not exists
+            try (Statement stmt = connection.createStatement()) {
+                String createTableSql = String.format(
+                    "CREATE TABLE IF NOT EXISTS %s (" +
+                        "recorded BIGINT NOT NULL, " +
+                        "location VARCHAR(255) NOT NULL, " +
+                        "sensor VARCHAR(255) NOT NULL, " +
+                        "measurement VARCHAR(255) NOT NULL, " +
+                        "units VARCHAR(255) NOT NULL, " +
+                        "value NUMERIC(10, 2) NOT NULL" +
+                        ");",
+                    TABLE
+                );
+                stmt.executeUpdate(createTableSql);
+                System.out.println("Table ensured: " + TABLE);
+            } catch (SQLException e) {
+                System.err.println("Error creating table: " + e.getMessage());
+                e.printStackTrace();
+                return;
+            }
+
+            // Store sensor data
+            String insertSql =
+                "INSERT INTO sensor_data (recorded, location, sensor, measurement, units, value) VALUES (?, ?, ?, ?, ?, ?)";
+            try {
+                JSONObject jsonObj =
+                    SensorDataJsonHelper.getSensorDataJSONObject();
+                System.out.println("SensorData marshalled to JSON");
+
+                // Validate or generate 'recorded' field
+                long recorded = jsonObj.has("recorded")
+                    ? jsonObj.getLong("recorded")
+                    : System.currentTimeMillis() / 1000;
+
+                try (
+                    PreparedStatement pstmt = connection.prepareStatement(
+                        insertSql
+                    )
+                ) {
+                    pstmt.setLong(1, recorded);
+                    pstmt.setString(2, jsonObj.getString("location"));
+                    pstmt.setString(3, jsonObj.getString("sensor"));
+                    pstmt.setString(4, jsonObj.getString("measurement"));
+                    pstmt.setString(5, jsonObj.getString("units"));
+                    pstmt.setBigDecimal(6, jsonObj.getBigDecimal("value"));
+                    pstmt.executeUpdate();
+                }
+                System.out.println("SensorData stored");
+            } catch (SQLException | JSONException e) {
+                System.err.println("Failed to store sensor data.");
+                e.printStackTrace();
+            }
+
+            // Retrieve sensor data
+            String selectSql =
+                "SELECT recorded, location, sensor, measurement, units, value FROM sensor_data";
+            List<String> jsonList = new ArrayList<>();
+            try (
+                Statement stmt = connection.createStatement();
+                ResultSet rs = stmt.executeQuery(selectSql)
+            ) {
+                while (rs.next()) {
+                    JSONObject jsonObj = new JSONObject();
+                    jsonObj.put("recorded", rs.getLong("recorded"));
+                    jsonObj.put("location", rs.getString("location"));
+                    jsonObj.put("sensor", rs.getString("sensor"));
+                    jsonObj.put("measurement", rs.getString("measurement"));
+                    jsonObj.put("units", rs.getString("units"));
+                    jsonObj.put("value", rs.getBigDecimal("value"));
+                    jsonList.add(jsonObj.toString());
+                }
+                System.out.println("SensorData retrieved");
+            } catch (SQLException | JSONException e) {
+                System.err.println("Failed to retrieve sensor data.");
+                e.printStackTrace();
+            }
+
+            // Print as CSV
+            try {
+                System.out.print(
+                    SensorDataJsonHelper.jsonArrayToCsv(
+                        jsonList.toArray(new String[0])
+                    )
+                );
+            } catch (Exception e) {
+                System.err.println("Failed to convert JSON to CSV.");
+                e.printStackTrace();
+            }
+
+            // Purge sensor data (use with caution in production!)
+            String deleteSql = "DELETE FROM sensor_data";
+            try (Statement stmt = connection.createStatement()) {
+                stmt.executeUpdate(deleteSql);
+                System.out.println("Sensor Data purged\n");
+            } catch (SQLException e) {
+                System.err.println("Failed to purge sensor data.");
+                e.printStackTrace();
+            }
+        } catch (SQLException e) {
+            System.err.println("Failed to connect to the Postgres database.");
+            e.printStackTrace();
+        }
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/data/src/java/com/ggeoffre/database/RedisData.java
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package com.geoffrey.database;
+
+import com.geoffrey.database.SensorDataJsonHelper;
+import java.util.List;
+import redis.clients.jedis.Jedis;
+
+public class RedisData {
+
+    // Configuration constants (consider externalizing for production)
+    private static final String REDIS_HOST = "localhost";
+    private static final int REDIS_PORT = 6379;
+    private static final String SENSOR_DATA_KEY = "sensor_data_db:sensor_data";
+
+    /**
+     * Processes sensor data: inserts, retrieves, prints as CSV, and purges the list.
+     */
+    public static void processSensorData() {
+        System.out.println("REDIS");
+        System.out.println("#####");
+
+        // Try-with-resources ensures Jedis client is always closed
+        try (Jedis jedisClient = new Jedis(REDIS_HOST, REDIS_PORT)) {
+            System.out.println("Connected to Redis database.");
+
+            // Store sensor data
+            try {
+                jedisClient.rpush(
+                    SENSOR_DATA_KEY,
+                    SensorDataJsonHelper.getSensorDataJSONString()
+                );
+                System.out.println("SensorData stored");
+            } catch (Exception e) {
+                System.err.println("Failed to store sensor data in Redis.");
+                e.printStackTrace();
+            }
+
+            // Retrieve sensor data
+            try {
+                List<String> jsonStrs = jedisClient.lrange(
+                    SENSOR_DATA_KEY,
+                    0,
+                    -1
+                );
+                System.out.println("SensorData retrieved");
+                System.out.println(
+                    SensorDataJsonHelper.jsonArrayToCsv(
+                        jsonStrs.toArray(new String[0])
+                    )
+                );
+            } catch (Exception e) {
+                System.err.println(
+                    "Failed to retrieve sensor data from Redis."
+                );
+                e.printStackTrace();
+            }
+
+            // Purge sensor data (use with caution in production!)
+            try {
+                jedisClient.del(SENSOR_DATA_KEY);
+                System.out.println("Sensor Data purged\n");
+            } catch (Exception e) {
+                System.err.println("Failed to purge sensor data in Redis.");
+                e.printStackTrace();
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to connect to Redis.");
+            e.printStackTrace();
+        }
+    }
+}
+
+
+----------------------------------------
+FILE: /Users/ggeoffre/Workspace/GitHub/onestring/code/data_storage/java/data/src/java/com/ggeoffre/database/SensorDataJsonHelper.java
+----------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2025-2026 ggeoffre, LLC
+
+package com.geoffrey.database;
+
+import java.util.*;
+import org.bson.Document;
+import org.json.*;
+
+public class SensorDataJsonHelper {
+
+    // Default sensor data for convenience
+    public static final String DEFAULT_SENSOR_DATA_JSON_STRING =
+        "{\"recorded\": 1768237200, \"location\": \"den\", \"sensor\": \"bmp280\", \"measurement\": \"temperature\", \"units\": \"C\", \"value\": 22.3}";
+
+    /**
+     * Generates a BSON Document for sensor data.
+     * If parameters are not provided, uses defaults and randomizes 'value' and 'recorded'.
+     */
+    public static Document getSensorDataDocument() {
+        return getSensorDataDocument(
+            "den",
+            "bmp280",
+            "temperature",
+            "C",
+            22.4 + new Random().nextDouble() * (32.1 - 22.4), // random value
+            System.currentTimeMillis() / 1000 // current time in seconds
+        );
+    }
+
+    /**
+     * Generates a BSON Document for sensor data with parameters.
+     */
+    public static Document getSensorDataDocument(
+        String location,
+        String sensor,
+        String measurement,
+        String units,
+        double value,
+        long recorded
+    ) {
+        Document sensorDoc = new Document();
+        sensorDoc.put("recorded", recorded);
+        sensorDoc.put("location", location);
+        sensorDoc.put("sensor", sensor);
+        sensorDoc.put("measurement", measurement);
+        sensorDoc.put("units", units);
+        // Round to one decimal place
+        sensorDoc.put("value", Math.round(value * 10.0) / 10.0);
+        return sensorDoc;
+    }
+
+    /**
+     * Returns a JSONObject representing sensor data.
+     * Uses default/randomized values.
+     */
+    public static JSONObject getSensorDataJSONObject() {
+        Document document = getSensorDataDocument();
+        return new JSONObject(document.toJson());
+    }
+
+    /**
+     * Returns a JSONObject representing sensor data with parameters.
+     */
+    public static JSONObject getSensorDataJSONObject(
+        String location,
+        String sensor,
+        String measurement,
+        String units,
+        double value,
+        long recorded
+    ) {
+        Document document = getSensorDataDocument(
+            location,
+            sensor,
+            measurement,
+            units,
+            value,
+            recorded
+        );
+        return new JSONObject(document.toJson());
+    }
+
+    /**
+     * Returns a JSON string representing sensor data.
+     * Uses default/randomized values.
+     */
+    public static String getSensorDataJSONString() {
+        Document document = getSensorDataDocument();
+        return document.toJson();
+    }
+
+    /**
+     * Returns a JSON string representing sensor data with parameters.
+     */
+    public static String getSensorDataJSONString(
+        String location,
+        String sensor,
+        String measurement,
+        String units,
+        double value,
+        long recorded
+    ) {
+        Document document = getSensorDataDocument(
+            location,
+            sensor,
+            measurement,
+            units,
+            value,
+            recorded
+        );
+        return document.toJson();
+    }
+
+    // Custom exception for JSON utility operations
+    public static class JsonUtilityException extends RuntimeException {
+
+        public JsonUtilityException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
+    /**
+     * Converts an array of JSON strings to a CSV format.
+     * Collects all unique headers and aligns rows accordingly.
+     */
+    public static String jsonArrayToCsv(String[] jsonStrings) {
+        if (jsonStrings == null || jsonStrings.length == 0) {
+            return "";
+        }
+
+        try {
+            // Collect all unique headers
+            Set<String> headerSet = new LinkedHashSet<>();
+            List<JSONObject> jsonObjects = new ArrayList<>();
+
+            for (String jsonString : jsonStrings) {
+                if (jsonString == null || jsonString.isEmpty()) {
+                    continue;
+                }
+                JSONObject jsonObject = new JSONObject(jsonString);
+                jsonObjects.add(jsonObject);
+                headerSet.addAll(jsonObject.keySet());
+            }
+
+            List<String> headers = new ArrayList<>(headerSet);
+
+            StringBuilder csvBuilder = new StringBuilder();
+            csvBuilder.append(String.join(",", headers)).append("\n");
+
+            // Build rows aligned with headers
+            for (JSONObject jsonObject : jsonObjects) {
+                List<String> row = new ArrayList<>();
+                for (String header : headers) {
+                    row.add(jsonObject.optString(header, ""));
+                }
+                csvBuilder.append(String.join(",", row)).append("\n");
+            }
+
+            return csvBuilder.toString();
+        } catch (Exception e) {
+            throw new JsonUtilityException(
+                "Error converting JSON array to CSV",
+                e
+            );
+        }
+    }
+}
+
+
+
